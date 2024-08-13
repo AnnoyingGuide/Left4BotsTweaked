@@ -1561,13 +1561,16 @@ Msg("Including left4bots_events...\n");
 {
 	// First count how many medkits, defibs, chainsaws and throwables we already have in the team
 	TeamShotguns = 0;
-	TeamChainsaws = 0;
+	//TeamChainsaws = 0;
 	TeamMelee = 0;
 	TeamMolotovs = 0;
 	TeamPipeBombs = 0;
 	TeamVomitJars = 0;
 	TeamMedkits = 0;
 	TeamDefibs = 0;
+	TeamSnipers = 0;
+	TeamPills = 0;
+	TeamAdren = 0;
 
 	foreach (surv in Survivors)
 	{
@@ -1576,14 +1579,25 @@ Msg("Including left4bots_events...\n");
 			local inv = {};
 			GetInvTable(surv, inv);
 
-			// Strings are a char array -- start the classname search at index 5, which is after "weapon", and the search should go by quicker.
-			TeamShotguns += (INV_SLOT_PRIMARY in inv && inv[INV_SLOT_PRIMARY].GetClassname().find("shotgun", 5) != null).tointeger();
+			if (INV_SLOT_PRIMARY in inv)
+			{
+				local cls = inv[INV_SLOT_PRIMARY].GetClassname();
+
+				TeamShotguns += (cls == "weapon_shotgun_chrome").tointeger();
+				TeamShotguns += (cls == "weapon_pumpshotgun").tointeger();
+				TeamShotguns += (cls == "weapon_autoshotgun").tointeger();
+				TeamShotguns += (cls == "weapon_shotgun_spas").tointeger();
+				TeamSnipers += (cls == "weapon_sniper_military").tointeger();
+				TeamSnipers += (cls == "weapon_hunting_rifle").tointeger();
+				TeamSnipers += (cls == "weapon_sniper_scout").tointeger();
+				TeamSnipers += (cls == "weapon_sniper_awp").tointeger();
+			}
 
 			if (INV_SLOT_SECONDARY in inv)
 			{
 				local cls = inv[INV_SLOT_SECONDARY].GetClassname();
 
-				TeamChainsaws += (cls == "weapon_chainsaw").tointeger();
+				TeamMelee += (cls == "weapon_chainsaw").tointeger();
 				TeamMelee += (cls == "weapon_melee").tointeger();
 			}
 
@@ -1602,6 +1616,14 @@ Msg("Including left4bots_events...\n");
 
 				TeamMedkits += (cls == "weapon_first_aid_kit").tointeger();
 				TeamDefibs += (cls == "weapon_defibrillator").tointeger();
+			}
+			
+			if (INV_SLOT_PILLS in inv)
+			{
+				local cls = inv[INV_SLOT_PILLS].GetClassname();
+
+				TeamPills += (cls == "weapon_pain_pills").tointeger();
+				TeamAdren += (cls == "weapon_adrenaline").tointeger();
 			}
 		}
 	}

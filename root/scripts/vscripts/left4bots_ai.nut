@@ -2109,7 +2109,7 @@ enum AI_AIM_TYPE {
 	local currWeps = [Left4Utils.WeaponId.none, Left4Utils.WeaponId.none, Left4Utils.WeaponId.none, Left4Utils.WeaponId.none, Left4Utils.WeaponId.none]; // Will be filled with the weapon ids of the bot's current weapons
 	local hasT1Shotgun = false;
 	local hasT2Shotgun = false;
-	local hasT3Weapon = false; // https://github.com/smilz0/Left4Bots/issues/70
+	//local hasT3Weapon = false; // https://github.com/smilz0/Left4Bots/issues/70
 	local priAmmoPercent = 100;
 	local hasAmmoUpgrade = true;
 	local hasLaserSight = true;
@@ -2131,6 +2131,11 @@ enum AI_AIM_TYPE {
 	local wantsDefib = false;
 	local wantsUpgdInc = false;
 	local wantsUpgdExp = false;
+	local hasSniper = false;
+	local hasPills = false;
+	local wantsPills = false;
+	local hasAdren = false;
+	local wantsAdren = false;
 	local inv = {};
 
 	GetInvTable(self, inv);
@@ -2149,7 +2154,7 @@ enum AI_AIM_TYPE {
 				case 0:
 					hasT1Shotgun = (currWeps[i] == Left4Utils.WeaponId.weapon_shotgun_chrome) || (currWeps[i] == Left4Utils.WeaponId.weapon_pumpshotgun);
 					hasT2Shotgun = (currWeps[i] == Left4Utils.WeaponId.weapon_autoshotgun) || (currWeps[i] == Left4Utils.WeaponId.weapon_shotgun_spas);
-					hasT3Weapon = (currWeps[i] == Left4Utils.WeaponId.weapon_grenade_launcher) || (currWeps[i] == Left4Utils.WeaponId.weapon_rifle_m60);
+					hasSniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_military) || (currWeps[i] == Left4Utils.WeaponId.weapon_hunting_rifle) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_scout) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_awp);
 					priAmmoPercent = Left4Utils.GetAmmoPercent(inv[slot]);
 					hasAmmoUpgrade = NetProps.GetPropInt(inv[slot], "m_nUpgradedPrimaryAmmoLoaded") >= L4B.Settings.pickups_wep_upgraded_ammo;
 					hasLaserSight = (NetProps.GetPropInt(inv[slot], "m_upgradeBitVec") & 4) != 0;
@@ -2180,6 +2185,12 @@ enum AI_AIM_TYPE {
 					hasUpgdExp = currWeps[i] == Left4Utils.WeaponId.weapon_upgradepack_explosive;
 					
 					break;
+					
+				case 4:
+					hasAdren = currWeps[i] == Left4Utils.WeaponId.weapon_adrenaline;
+					hasPills = currWeps[i] == Left4Utils.WeaponId.weapon_pain_pills;
+					
+					break;
 			}
 		}
 	}
@@ -2199,7 +2210,7 @@ enum AI_AIM_TYPE {
 			if (useWeapon != 0)
 				WeaponsToSearch[useWeapon] <- 0; // Always add the "use" weapon, if any
 			
-			if (L4B.TeamShotguns <= L4B.Settings.team_min_shotguns && (hasT1Shotgun || hasT2Shotgun))
+			if (L4B.TeamShotguns <= L4B.Settings.team_min_shotguns && (hasT1Shotgun || hasT2Shotgun) && priAmmoPercent > L4B.Settings.pickups_wep_replace_ammo)
 			{
 				// We have a shotgun but TeamShotguns <= team_min_shotguns so we need to make sure to keep it. Just upgrade it if needed
 
@@ -2208,6 +2219,10 @@ enum AI_AIM_TYPE {
 					WeaponsToSearch[Left4Utils.WeaponId.weapon_autoshotgun] <- 0;
 					WeaponsToSearch[Left4Utils.WeaponId.weapon_shotgun_spas] <- 0;
 				}
+			}
+			else if (L4B.TeamSnipers <= L4B.Settings.team_min_snipers && (hasSniper) && priAmmoPercent > L4B.Settings.pickups_wep_replace_ammo)
+			{
+				// keep sniper
 			}
 			else
 			{
@@ -2244,6 +2259,13 @@ enum AI_AIM_TYPE {
 					WeaponsToSearch[Left4Utils.WeaponId.weapon_pumpshotgun] <- 0;
 					WeaponsToSearch[Left4Utils.WeaponId.weapon_shotgun_chrome] <- 0;
 				}
+				else if (L4B.TeamSnipers < L4B.Settings.team_min_snipers)
+				{
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_military] <- 0;
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_hunting_rifle] <- 0;
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_scout] <- 0;
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_awp] <- 0;
+				}
 			}
 		}
 
@@ -2267,30 +2289,12 @@ enum AI_AIM_TYPE {
 			for (local x = 0; x < WeapPref[slotIdx].len(); x++)
 			{
 				local prefId = WeapPref[slotIdx][x];
-				if (hasChainsaw && L4B.TeamChainsaws > L4B.Settings.team_max_chainsaws)
-				{
-					// Try to get rid of chainsaw by replacing with anything else
-					if (prefId != Left4Utils.WeaponId.weapon_chainsaw)
-					{
-						if (prefId > Left4Utils.MeleeWeaponId.none && L4B.TeamMelee >= L4B.Settings.team_max_melee)
-						{
-							// But always take care of the team_max_chainsaws / team_max_melee limits
-						}
-						else
-							WeaponsToSearch[prefId] <- 0;
-					}
-				}
-				else if (hasMelee && L4B.TeamMelee > L4B.Settings.team_max_melee)
+				if ((hasMelee || hasChainsaw) && L4B.TeamMelee > L4B.Settings.team_max_melee)
 				{
 					// Try to get rid of melee by replacing with any non melee secondary
-					if (prefId < Left4Utils.MeleeWeaponId.none)
+					if ((prefId < Left4Utils.MeleeWeaponId.none) || (prefId != Left4Utils.WeaponId.weapon_chainsaw))
 					{
-						if (prefId == Left4Utils.WeaponId.weapon_chainsaw && L4B.TeamChainsaws >= L4B.Settings.team_max_chainsaws)
-						{
-							// But always take care of the team_max_chainsaws / team_max_melee limits
-						}
-						else
-							WeaponsToSearch[prefId] <- 0;
+						WeaponsToSearch[prefId] <- 0;
 					}
 				}
 				else
@@ -2299,11 +2303,11 @@ enum AI_AIM_TYPE {
 					// If !noPref add all the preference weapons that have higher priority than the one we have in the inventory
 					if ((noPref && currWeps[slotIdx] == Left4Utils.WeaponId.none) || (!noPref && prefId != currWeps[slotIdx]))
 					{
-						if ((prefId == Left4Utils.WeaponId.weapon_chainsaw && L4B.TeamChainsaws >= L4B.Settings.team_max_chainsaws) || (prefId > Left4Utils.MeleeWeaponId.none && L4B.TeamMelee >= L4B.Settings.team_max_melee && !hasMelee))
+						if ((prefId == Left4Utils.WeaponId.weapon_chainsaw && L4B.TeamMelee >= L4B.Settings.team_max_melee) || (prefId > Left4Utils.MeleeWeaponId.none && L4B.TeamMelee >= L4B.Settings.team_max_melee && !hasMelee))
 						{
 							// Take care of the team_max_chainsaws / team_max_melee limits
 						}
-						else if (currWeps[0] == Left4Utils.WeaponId.none && prefId > Left4Utils.MeleeWeaponId.none && !L4B.Settings.pickups_melee_noprimary)
+						else if ((currWeps[0] == Left4Utils.WeaponId.none && prefId > Left4Utils.MeleeWeaponId.none && !L4B.Settings.pickups_melee_noprimary) || (currWeps[0] == Left4Utils.WeaponId.none && prefId == Left4Utils.WeaponId.weapon_chainsaw && !L4B.Settings.pickups_melee_noprimary))
 						{
 							// Don't pickup melee weapons if we don't have a primary weapon and pickups_melee_noprimary is 0
 						}
@@ -2599,23 +2603,85 @@ enum AI_AIM_TYPE {
 		
 		if (noPref)
 		{
-			// If priority must be ignored, add all the listed weapons for this slot. Order doesn't matter
+			// If noPref and slot is currently empty, add all the listed items. Order doesn't matter
 			if (currWeps[slotIdx] == Left4Utils.WeaponId.none)
 			{
 				for (local x = 0; x < WeapPref[slotIdx].len(); x++)
-					WeaponsToSearch[WeapPref[slotIdx][x]] <- 0;
+				{
+					// Just take note of all the requested items, we'll build the search list later
+					local prefId = WeapPref[slotIdx][x];
+					if (prefId == Left4Utils.WeaponId.weapon_adrenaline)
+						wantsAdren = true;
+					else if (prefId == Left4Utils.WeaponId.weapon_pain_pills)
+						wantsPills = true;
+				}
 			}
 		}
 		else
 		{
 			for (local x = 0; x < WeapPref[slotIdx].len(); x++)
 			{
-				// Add all the preference weapons that have higher priority than the one we have in the inventory
+				// Just take note of the requested higher priority items, we'll build the search list later
 				local prefId = WeapPref[slotIdx][x];
 				if (prefId != currWeps[slotIdx])
-					WeaponsToSearch[prefId] <- 0;
+				{
+					if (prefId == Left4Utils.WeaponId.weapon_adrenaline)
+						wantsAdren = true;
+					else if (prefId == Left4Utils.WeaponId.weapon_pain_pills)
+						wantsPills = true;
+				}
 				else
 					break;
+			}
+		}
+		
+		if (!hasAdren && !hasPills)
+		{
+			// If the slot is empty we'll pick up anything that is in our assigned priority list
+			if (wantsAdren)
+				WeaponsToSearch[Left4Utils.WeaponId.weapon_adrenaline] <- 0;
+
+			if (wantsPills)
+				WeaponsToSearch[Left4Utils.WeaponId.weapon_pain_pills] <- 0;
+		}
+		else
+		{
+			// Otherwise...
+			if (L4B.TeamPills < L4B.Settings.team_min_pills)
+			{
+				if (!hasPills)
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_pain_pills] <- 0; // Search one if we don't have it
+			}
+			else
+			{
+				if (L4B.TeamPills == L4B.Settings.team_min_pills && hasPills)
+				{
+					// Do nothing or TeamPills will drop below team_min_pills
+				}
+				else
+				{
+					if (L4B.TeamAdren < L4B.Settings.team_min_adren)
+					{
+						if (!hasAdren)
+							WeaponsToSearch[Left4Utils.WeaponId.weapon_adrenaline] <- 0;
+					}
+					else
+					{
+						if (L4B.TeamAdren == L4B.Settings.team_min_adren && hasAdren)
+						{
+							// nothing
+						}
+						else
+						{
+							// Otherwise we'll just follow our assigned priority list
+							if (wantsAdren && !wantsAdren)
+								WeaponsToSearch[Left4Utils.WeaponId.weapon_adrenaline] <- 0;
+								
+							if (wantsPills && !hasPills)
+								WeaponsToSearch[Left4Utils.WeaponId.weapon_pain_pills] <- 0;
+						}
+					}	
+				}
 			}
 		}
 	}
@@ -2623,9 +2689,7 @@ enum AI_AIM_TYPE {
 	// Handle Ammo
 	if (priAmmoPercent < L4B.Settings.pickups_wep_ammo_replenish)
 	{
-		// https://github.com/smilz0/Left4Bots/issues/70
-		if (!hasT3Weapon || hasT3Weapon && L4B.Settings.t3_ammo_bots)
-			WeaponsToSearch[Left4Utils.WeaponId.weapon_ammo] <- 0;
+		WeaponsToSearch[Left4Utils.WeaponId.weapon_ammo] <- 0;
 	}
 
 	// Handle Upgrades

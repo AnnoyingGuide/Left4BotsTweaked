@@ -511,7 +511,10 @@
 	tank_vomitjar_chance = 1
 
 	// Bots will try to keep this maximum number of chainsaws in the entire survivor team, regardless their weapon preference
-	team_max_chainsaws = 0
+	//team_max_chainsaws = 0
+	team_min_snipers = 0
+	team_min_pills = 0
+	team_min_adren = 0
 
 	// Bots will try to keep this maximum number of melee weapons in the entire survivor team, regardless their weapon preference
 	team_max_melee = 2

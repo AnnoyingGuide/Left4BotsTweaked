@@ -90,8 +90,11 @@ IncludeScript("left4bots_requirements");
 	TeamVomitJars = 0
 	TeamMedkits = 0
 	TeamDefibs = 0
-	TeamChainsaws = 0
+	//TeamChainsaws = 0
 	TeamMelee = 0
+	TeamSnipers = 0
+	TeamPills = 0
+	TeamAdren = 0
 	ScavengeUseTarget = null
 	ScavengeUseTargetPos = null
 	ScavengeUseType = 0
@@ -1467,20 +1470,38 @@ if (activator && isWorthPickingUp)
 			return null; // No
 
 		// Yes, but can we throw them at tanks right now?
-		if (RandomInt(1, 100) > Settings.tank_molotov_chance)
+		if (RandomInt(1, 100) <= Settings.tank_molotov_chance)
+		{
+			// Yes, let's find a target tank
+			local nearestTank = GetNearestVisibleTankWithin(bot, orig, Settings.tank_throw_range_min, Settings.tank_throw_range_max);
+
+			// Should we throw the bile jar at this tank?
+			if (nearestTank && !nearestTank.IsOnFire() && !nearestTank.IsIncapacitated() && nearestTank.GetHealth() >= Settings.tank_throw_min_health && NetProps.GetPropInt(nearestTank, "m_nWaterLevel") <= 0 && !AreOtherSurvivorsNearby(userid, nearestTank.GetOrigin(), Settings.tank_throw_survivors_mindistance))
+			{
+				// Yes, let's do it...
+				return nearestTank;
+			}
+		}
+
+		// Ok, we can throw bile jars right now but not at tanks. Let's see if we need to throw it at hordes
+		if (RandomInt(1, 100) > Settings.horde_nades_chance || !NetProps.GetPropInt(bot, "m_hasVisibleThreats")) // NetProps.GetPropInt(bot, "m_clientIntensity") < 40
 			return null; // No
 
-		// Yes, let's find a target tank
-		local nearestTank = GetNearestVisibleTankWithin(bot, orig, Settings.tank_throw_range_min, Settings.tank_throw_range_max);
+		// Is there an actual horde?
+		local common = CheckAngryCommonsWithin(bot, orig, Settings.horde_nades_size, Settings.horde_nades_radius, Settings.horde_nades_maxaltdiff);
+		if (common == false)
+			return null; // No
 
-		// Should we throw the molotov at this tank?
-		if (nearestTank && !nearestTank.IsOnFire() && !nearestTank.IsIncapacitated() && nearestTank.GetHealth() >= Settings.tank_throw_min_health && /*!::Left4Utils.IsPlayerInWater(nearestTank)*/ NetProps.GetPropInt(nearestTank, "m_nWaterLevel") <= 0 && !AreOtherSurvivorsNearby(userid, nearestTank.GetOrigin(), Settings.tank_throw_survivors_mindistance))
-		{
-			// Yes, let's do it...
-			return nearestTank;
-		}
-		else
-			return null;
+		// Yes
+		if (common != true)
+			return common.GetOrigin(); // We have the position of the farthest common of the horde
+
+		// We don't have the position of the farthest common of the horde, we must find a target position ourselves
+		local pos = Left4Utils.BotGetFarthestPathablePos(bot, Settings.throw_nade_radius);
+		if (pos && (pos - orig).Length() >= Settings.throw_nade_mindistance)
+			return pos; // Found
+
+		return null;
 	}
 	else if (throwableClass == "weapon_vomitjar")
 	{
@@ -1495,7 +1516,7 @@ if (activator && isWorthPickingUp)
 			local nearestTank = GetNearestVisibleTankWithin(bot, orig, Settings.tank_throw_range_min, Settings.tank_throw_range_max);
 
 			// Should we throw the bile jar at this tank?
-			if (nearestTank && !nearestTank.IsOnFire() && !nearestTank.IsIncapacitated() && nearestTank.GetHealth() >= Settings.tank_throw_min_health && /*!::Left4Utils.IsPlayerInWater(nearestTank)*/ NetProps.GetPropInt(nearestTank, "m_nWaterLevel") <= 0 && !AreOtherSurvivorsNearby(userid, nearestTank.GetOrigin(), Settings.tank_throw_survivors_mindistance))
+			if (nearestTank && !nearestTank.IsIncapacitated() && nearestTank.GetHealth() >= Settings.tank_throw_min_health)
 			{
 				// Yes, let's do it...
 				return nearestTank;
@@ -1570,7 +1591,7 @@ if (activator && isWorthPickingUp)
 
 		// Is the tank still a valid target?
 		// TODO: add trace check?
-		if (throwTarget.IsValid() && !throwTarget.IsDead() && !throwTarget.IsDying() && !throwTarget.IsIncapacitated() && !throwTarget.IsOnFire() && throwTarget.GetHealth() >= Settings.tank_throw_min_health && /*!::Left4Utils.IsPlayerInWater(throwTarget)*/ NetProps.GetPropInt(throwTarget, "m_nWaterLevel") <= 0 && !AreOtherSurvivorsNearby(userid, throwTarget.GetOrigin(), Settings.tank_throw_survivors_mindistance))
+		if (throwTarget.IsValid() && !throwTarget.IsDead() && !throwTarget.IsDying() && !throwTarget.IsIncapacitated() && throwTarget.GetHealth() >= Settings.tank_throw_min_health)
 			return true; // Yes
 	}
 	else if (throwType == AI_THROW_TYPE.Horde)
@@ -1580,7 +1601,7 @@ if (activator && isWorthPickingUp)
 			return false;
 
 		// Can we actually throw this item?
-		if ((throwClass == "weapon_pipe_bomb" && !Settings.throw_pipebomb) || (throwClass == "weapon_vomitjar" && !Settings.throw_vomitjar) || (Time() - LastNadeTime) < Settings.throw_nade_interval)
+		if ((throwClass == "weapon_pipe_bomb" && !Settings.throw_pipebomb) || (throwClass == "weapon_vomitjar" && !Settings.throw_vomitjar) || (throwClass == "weapon_molotov" && !Settings.throw_molotov) || (Time() - LastNadeTime) < Settings.throw_nade_interval)
 			return false; // No
 
 		// Is there an actual horde?

@@ -1,5 +1,5 @@
 rifle_m60,grenade_launcher,rifle,rifle_ak47,rifle_sg552,rifle_desert,sniper_awp,sniper_military,hunting_rifle,sniper_scout,shotgun_spas,autoshotgun,smg_mp5,smg_silenced,smg,pumpshotgun,shotgun_chrome
-chainsaw,bigoronsword,mastersword,golfclub,knife,katana,machete,rockaxe,dekustick,kicthenknife,fireaxe,baseball_bat,crowbar,cricket_bat,b_brokenbottle,b_legbone,mirrorshield,frying_pan,tonfa,shovel,electric_guitar,hylianshield,scup,riotshield,pitchfork,pistol_magnum,pistol
+chainsaw,golfclub,knife,katana,machete,fireaxe,baseball_bat,crowbar,cricket_bat,frying_pan,tonfa,shovel,electric_guitar,riotshield,pitchfork,pistol_magnum,pistol
 molotov,vomitjar,pipe_bomb
 upgradepack_incendiary,upgradepack_explosive,first_aid_kit,defibrillator
 pain_pills,adrenaline

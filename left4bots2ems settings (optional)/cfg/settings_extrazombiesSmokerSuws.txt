@@ -1,0 +1,13 @@
+team_max_melee = 4
+team_min_medkits = 6
+team_min_molotovs = 2
+team_min_pipebombs = 2
+team_min_shotguns = 2
+team_min_vomitjars = 2
+handle_l4d1_survivors = 2
+scavenge_max_autofollow = 0
+scavenge_max_bots = 8
+team_min_snipers = 2
+team_min_pills = 4
+team_min_adren = 4
+team_min_magnums = 2

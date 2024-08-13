@@ -1,0 +1,10 @@
+team_max_melee = 2
+team_min_medkits = 1
+team_min_molotovs = 1
+team_min_pipebombs = 1
+team_min_shotguns = 1
+team_min_vomitjars = 1
+scavenge_max_autofollow = 0
+scavenge_max_bots = 3
+team_min_snipers = 1
+team_min_adren = 1

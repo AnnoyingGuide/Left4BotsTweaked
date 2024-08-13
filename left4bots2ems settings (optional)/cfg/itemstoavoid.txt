@@ -1,0 +1,5 @@
+weapon_ammo
+weapon_upgrade_item
+upgrade_ammo_explosive
+upgrade_ammo_incendiary
+upgrade_laser_sight

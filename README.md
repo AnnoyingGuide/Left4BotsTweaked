@@ -1,3 +1,15 @@
+# Fork details
+This is my small edit of Left 4 Bots 2 too add a few features that I wanted to add and tweaks a few things.
+Includes
+
+Added a min_sniper setting which works similarly to min shotgun but for snipers
+Redid each bot weapon preference so they all prefer rifles and will divide out shotguns and snipers to fit team needs adding more variety to team setup
+added min pills and adrenaline options in cfg
+removed chainsaw cfg and merged it into melee cfg (tweak)
+tweak Molotov usage so they also throw at hordes and not just tanks (tweak)
+Tweaked the ems settings in the optional cfg to suit my needs I would recommend them but not required.
+(I also probably forgot somethings lol)
+
 # Left 4 Bots 2
 This is a complete rework of [Left 4 Bots (v1)](https://github.com/smilz0/Left4Bots/tree/V1). It has pretty much the same functionalities of the V1 but they have been improved, plus some new functionalities have been added.
 

@@ -2326,6 +2326,12 @@ enum AI_AIM_TYPE {
 			// We have a pistol, it's not dual, we likely aren't searching another one due to how priorities work... so add it again to get a dual
 			WeaponsToSearch[Left4Utils.WeaponId.weapon_pistol] <- 0;
 		}
+
+		if (hasMelee && !hasChainsaw)
+		{
+			// We have a melee but it ain't a chainsaw so lets get one (shitty fix for a strange issue I've ran into with chainsaws)
+			WeaponsToSearch[Left4Utils.WeaponId.weapon_chainsaw] <- 0;
+		}
 	}
 
 	// THROWABLES

@@ -46,6 +46,7 @@ IncludeScript("left4bots_requirements");
 		goto = 1
 		wait = 1
 		deploy = 2
+		tempheal = 2
 		heal = 2
 		use = 2
 		destroy = 2
@@ -83,6 +84,7 @@ IncludeScript("left4bots_requirements");
 	LastLeadStartVocalize = 0
 	NiceShootSurv = null
 	NiceShootTime = 0
+	IncapBlockNavs = {}
 	ItemsToAvoid = []
 	TeamShotguns = 0
 	TeamMolotovs = 0
@@ -95,6 +97,7 @@ IncludeScript("left4bots_requirements");
 	TeamSnipers = 0
 	TeamPills = 0
 	TeamAdren = 0
+	TeamMagnums = 0
 	ScavengeUseTarget = null
 	ScavengeUseTargetPos = null
 	ScavengeUseType = 0
@@ -102,6 +105,7 @@ IncludeScript("left4bots_requirements");
 	L4F = false
 	LastSignalType = ""
 	LastSignalTime = 0
+	AntiPipebombBugSetup = false
 	OnTankSettings = {}
 	OnTankSettingsBak = {}
 	OnTankCvars = {}
@@ -407,7 +411,10 @@ IncludeScript("left4bots_settings");
 {
 	// This prevents the crash
 	foreach (bot in Bots)
-		CarryItemStop(bot);
+	{
+		if (bot.IsValid())
+			CarryItemStop(bot);
+	}
 
 	// Stop the thinker
 	Left4Timers.RemoveThinker("L4BThinker");
@@ -431,7 +438,6 @@ IncludeScript("left4bots_settings");
 
 	// Stop any pending automation task
 	Automation.ResetTasks();
-
 
 	// Clear the lists
 	Survivors.clear();
@@ -883,14 +889,13 @@ IncludeScript("left4bots_settings");
 		
 		if (ret && Left4Utils.CanTraceTo(bot, ret, tracemask_others))
 		{
-			return ret;
+			return { ent = ret, head = ret_data[0] <= Settings.manual_attack_special_head_radius };
 		}
 	}
 	
 	ret_array.clear();
 	
 	//lxc kill raged Witch if no Specials nearby
-	
 	foreach (witch in Witches)
 	{
 		// fix for https://github.com/smilz0/Left4Bots/issues/84
@@ -914,11 +919,13 @@ IncludeScript("left4bots_settings");
 		
 		if (ret && Left4Utils.CanTraceTo(bot, ret, tracemask_others))
 		{
-			return ret;
+			return { ent = ret, head = true };
 		}
 	}
 	
 	ret_array.clear();
+	
+	// [NEW] Added Tanks to the list of targets for SurvivorBots to shoot so they don't take too long to react to its presence.
 	
 	foreach (tank in Tanks)
 	{
@@ -935,7 +942,7 @@ IncludeScript("left4bots_settings");
 	local tank = null;
 	local newRadius = radius;
 	
-	// [NEW] Sort the array from closest to farthest common infected so the `CanTraceTo` function doesn't have to perform as many traces.
+	// [NEW] Sort the array from closest to farthest Tank so the `CanTraceTo` function doesn't have to perform as many traces.
 	
 	ret_array.sort(function (a, b) {return a[0] - b[0]});
 	
@@ -954,8 +961,6 @@ IncludeScript("left4bots_settings");
 	
 	ret_array.clear();
 	
-	// [NEW] Added Tanks to the list of targets for SurvivorBots to shoot so they don't take too long to react to its presence.
-	
 	local ent = null;
 	while (ent = Entities.FindByClassnameWithin(ent, "infected", orig, newRadius)) // If only we had a infected_spawned event for the commons...
 	{
@@ -963,15 +968,15 @@ IncludeScript("left4bots_settings");
 		{
 			local toEnt = ent.GetOrigin() - orig;
 			local dist = toEnt.Norm();
-																	//lxc ignore wandering infected
-			if (botFacing.Dot(toEnt) >= minDot && (Settings.manual_attack_skill >= 3 || IsInfectedAngry(ent)))
+			
+			if (botFacing.Dot(toEnt) >= minDot)
 			{
 				ret_array.append([dist, ent]);
 			}
 		}
 	}
 	
-	// [NEW] Sort the array from closest to farthest Tank so the `CanTraceTo` function doesn't have to perform as many traces.
+	// [NEW] Sort the array from closest to farthest common infected so the `CanTraceTo` function doesn't have to perform as many traces.
 	
 	ret_array.sort(function (a, b) {return a[0] - b[0]});
 	
@@ -979,13 +984,13 @@ IncludeScript("left4bots_settings");
 	{
 		local ret = ret_data[1];
 		
-		if (ret && Left4Utils.CanTraceTo(bot, ret, tracemask_others))
+		if (ret && (Settings.manual_attack_wandering || IsInfectedAngry(ret)) && !IsRiotPolice(ret, orig) && Left4Utils.CanTraceTo(bot, ret, tracemask_others))
 		{
-			return ret;
+			return { ent = ret, head = ret_data[0] <= Settings.manual_attack_common_head_radius };
 		}
 	}
 	
-	return tank;
+	return tank ? { ent = tank, head = true } : tank;
 }
 
 // Called when the bot's pick-up algorithm decides to pick the item up
@@ -2172,7 +2177,7 @@ if (activator && isWorthPickingUp)
 				if (l4b.Settings.shoot_rock && self.GetHealth() > 0 && a >= -l4b.Settings.shoot_rock_diffangle && a <= l4b.Settings.shoot_rock_diffangle)
 				{
 					local aw = bot.GetActiveWeapon();
-					if (aw && aw.IsValid() && Time() >= NetProps.GetPropFloat(aw, "m_flNextPrimaryAttack") && distance <= l4b.GetWeaponRangeById(Left4Utils.GetWeaponId(aw)))
+					if (aw && aw.IsValid() && (bot.IsFiringWeapon() || Time() >= NetProps.GetPropFloat(aw, "m_flNextPrimaryAttack")) && distance <= l4b.GetWeaponRangeById(Left4Utils.GetWeaponId(aw)))
 					{
 						//l4b.PlayerPressButton(bot, BUTTON_ATTACK, 0.0, self.GetCenter() + (fwd * l4b.Settings.shoot_rock_ahead), 0, 0, true); // Try to shoot slightly in front of the rock
 						
@@ -2196,16 +2201,23 @@ if (activator && isWorthPickingUp)
 
 // Loads the given survivor weapon preference file and returns an array with 5 elements (one for each inventory slot)
 // Each element is a sub-array with the weapon list from the highest to the lowest priority one for that inventory slot
+/*
+Support vanilla weapon preference.
+		use '*' and '/' split weapon list into each group(Tier)，each group has a priority.
+		flag for single group:
+			*: no priority, bot will just pick up any one of them.
+			/: have priority.
+	
+	Without any flag or only at the beginning of each line, it is still l4b2 style (all weapons are at the same group, and have priority (determined by *))
+	https://github.com/smilz0/Left4Bots/issues/104
+*/
 ::Left4Bots.LoadWeaponPreferences <- function (survivor, scope)
 {
 	// WeapPref array has one sub-array for each inventory slot
 	// Each sub-array contains the weapons from the highest to the lowest priority one for that inventory slot
-	scope.WeapPref <- [[], [], [], [], []];
+	scope.WeapPref <- [[], [], [], [], []]; 
+	//new format like this: [[[],[]...], [], [], [], []];
 	
-	// WeapNoPref array contains a flag for each inventory slot
-	// The flag indicates whether the priority of the weapons in WeapPref for that slot must be ignored
-	scope.WeapNoPref <- [false, false, false, false, false];
-
 	if (!survivor || !survivor.IsValid() || !scope)
 		return;
 
@@ -2226,30 +2238,43 @@ if (activator && isWorthPickingUp)
 		local line = Left4Utils.StripComments(lines[i]);
 		if (line != "")
 		{
+			local Tier = -1;
 			local weaps = split(line, ",");
 			for (local x = 0; x < weaps.len(); x++)
 			{
 				//delete space characters which cause bug
 				local wp = strip(weaps[x]);
 				
-				if (x == 0 && wp == "*")
-					scope.WeapNoPref[i] = true;
-				else
+				// Start a new line when find a flag
+				if (wp == "*" || wp == "/" || x == 0)
 				{
-					local id = Left4Utils.GetWeaponIdByName(wp);
+					Tier++;
+					local arr = [(wp == "*")] // set NoPref flag into first
+					scope.WeapPref[i].append(arr);
+				}
+				
+				local id = Left4Utils.GetWeaponIdByName(wp);
 
-					//Logger.Debug("LoadWeaponPreferences - i: " + i + " - w: " + wp + " - id: " + id);
+				//Logger.Debug("LoadWeaponPreferences - i: " + i + " - w: " + wp + " - id: " + id);
 
-					if (id > Left4Utils.WeaponId.none && id != Left4Utils.MeleeWeaponId.none && id != Left4Utils.UpgradeWeaponId.none)
-					{
-						scope.WeapPref[i].append(id); // valid weapon
-						c++;
-					}
+				if (id > Left4Utils.WeaponId.none && id != Left4Utils.MeleeWeaponId.none && id != Left4Utils.UpgradeWeaponId.none)
+				{
+					scope.WeapPref[i][Tier].append(id); // valid weapon
+					c++;
 				}
 			}
 		}
 	}
-
+	
+	/*
+	printl(filename);
+	foreach(slot, list in scope.WeapPref)
+	{
+		printl("slot" + slot)
+		__DumpScope(4, list);
+	}
+	*/
+	
 	Logger.Debug("LoadWeaponPreferences - Loaded " + c + " preferences for survivor: " + survivor.GetPlayerName() + " from file: " + filename);
 }
 
@@ -2520,8 +2545,12 @@ if (activator && isWorthPickingUp)
 ::Left4Bots.GetWeaponRangeById <- function (weaponId)
 {
 	if (weaponId > Left4Utils.MeleeWeaponId.none || weaponId == Left4Utils.WeaponId.weapon_chainsaw)
-		return Settings.manual_attack_radius < 100 ? Settings.manual_attack_radius : 100; // TODO: maybe we should make it a setting
-
+	{
+		//lxc use "melee_range", otherwise the bots might just swing melee and hit nothing.
+		local melee_range = Convars.GetFloat("melee_range");
+		return Settings.manual_attack_radius < melee_range ? Settings.manual_attack_radius : melee_range; // TODO: maybe we should make it a setting
+	}
+	
 	if (weaponId == Left4Utils.WeaponId.weapon_pumpshotgun || weaponId == Left4Utils.WeaponId.weapon_autoshotgun || weaponId == Left4Utils.WeaponId.weapon_shotgun_chrome || weaponId == Left4Utils.WeaponId.weapon_shotgun_spas)
 		return Settings.manual_attack_radius < 600 ? Settings.manual_attack_radius : 600;
 
@@ -2668,7 +2697,7 @@ if (activator && isWorthPickingUp)
 	local kvs = { classname = "script_nav_blocker", origin = spit.GetOrigin(), extent = Vector(Settings.dodge_spit_radius, Settings.dodge_spit_radius, Settings.dodge_spit_radius), teamToBlock = "2", affectsFlow = "0" };
 	local ent = g_ModeScript.CreateSingleSimpleEntityFromTable(kvs);
 	ent.ValidateScriptScope();
-	Logger.Debug("Created script_nav_blocker: " + ent.GetName());
+	Logger.Debug("Created script_nav_blocker (spit): " + ent.GetName());
 
 	DoEntFire("!self", "SetParent", "!activator", 0, spit, ent); // I parent the nav blocker to the spit entity so it is automatically killed when the spit is gone
 	DoEntFire("!self", "BlockNav", "", 0, null, ent);
@@ -3271,6 +3300,11 @@ if (activator && isWorthPickingUp)
 	}
 	else
 	{
+		if (button == BUTTON_ATTACK)
+		{
+			local scope = bot.GetScriptScope();
+			scope.AttackButtonForced = false;
+		}
 		Left4Utils.PlayerUnForceButton(bot, button);
 		if (lockLook)
 			Left4Utils.UnfreezePlayer(bot);
@@ -3291,6 +3325,11 @@ if (activator && isWorthPickingUp)
 	}
 	else
 	{
+		if (button == BUTTON_ATTACK)
+		{
+			local scope = bot.GetScriptScope();
+			scope.AttackButtonForced = false;
+		}
 		Left4Utils.PlayerUnForceButton(bot, button);
 		if (lockLook)
 			Left4Utils.UnfreezePlayer(bot);
@@ -3300,10 +3339,9 @@ if (activator && isWorthPickingUp)
 // get head, otherwise return center pos
 ::Left4Bots.GetHitPos <- function (victim, head = true)
 {
-	//lxc use "GetLastKnownArea" replace "LookupBone"
 	if ("GetLastKnownArea" in victim)
 	{
-		if (head)
+		if (head == true) // head
 		{
 			//survivor, common infected, smoker, boomer, hunter, witch
 			local BoneId = victim.LookupBone("ValveBiped.Bip01_Head1");
@@ -3311,7 +3349,7 @@ if (activator && isWorthPickingUp)
 			if (BoneId != -1 || (BoneId = victim.LookupBone("bip_head")) != -1 || (BoneId = victim.LookupBone("ValveBiped.Bip01_Head")) != -1)
 				return victim.GetBoneOrigin(BoneId);
 		}
-		else //body
+		else if (head == false) // chest
 		{
 			//survivor, common infected, smoker, boomer, hunter, witch, tank
 			local BoneId = victim.LookupBone("ValveBiped.Bip01_Spine1");
@@ -3319,6 +3357,12 @@ if (activator && isWorthPickingUp)
 			if (BoneId != -1 || (BoneId = victim.LookupBone("bip_spine_1")) != -1)
 				return victim.GetBoneOrigin(BoneId);
 		}
+		else if (head == null) // foot, use for weapons like grenade launcher
+			return victim.GetOrigin();
+		
+		// Fast Headcrab (Jockey) https://steamcommunity.com/sharedfiles/filedetails/?id=3121830019
+		// this model use custom named bone, and cannot hit Center pos
+		return victim.GetBoneOrigin(0);
 	}
 	
 	//lxc center should be better
@@ -3363,6 +3407,13 @@ if (activator && isWorthPickingUp)
 	if (destination != null || deltaPitch != 0 || deltaYaw != 0)
 		Left4Utils.BotLookAt(player, destination, deltaPitch, deltaYaw);
 	
+	// prevent release the button in wrong way
+	if (button == BUTTON_ATTACK)
+	{
+		local scope = player.GetScriptScope();
+		scope.AttackButtonForced = true;
+	}
+	
 	Left4Utils.PlayerForceButton(player, button);
 	
 	if (holdTime == 0.0)
@@ -3390,6 +3441,23 @@ if (activator && isWorthPickingUp)
 		}
 	}
 	return ret;
+}
+
+// Returns whether the there is at least one aggroed tank whithin 'min' and 'max' units from 'origin'
+::Left4Bots.HasAggroedTankWithin <- function (origin, min = 80, max = 1000)
+{
+	foreach (tank in Tanks)
+	{
+		if (tank && tank.IsValid() && NetProps.GetPropInt(tank, "m_lifeState") == 0 /* is alive? */ && !tank.IsIncapacitated() && NetProps.GetPropInt(tank, "m_lookatPlayer") >= 0)
+		{
+			local dist = (origin - tank.GetOrigin()).Length();
+			if (dist >= min && dist <= max)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 // Returns the nearest aggroed tank whithin 'min' and 'max' units from 'origin'
@@ -3534,6 +3602,127 @@ if (activator && isWorthPickingUp)
 		//set the correct index //https://forums.alliedmods.net/showthread.php?p=1621340#post1621340
 		NetProps.SetPropInt(weapon, "m_iWorldModelIndex", GetModelIndex(weapon.GetModelName()));
 	}
+}
+
+// Removes any active pipe bomb from the map, if needed
+::Left4Bots.HandleAntiPipebombBug <- function ()
+{
+	Logger.Debug("HandleAntiPipebombBug");
+	
+	if (!::Left4Bots.Settings.anti_pipebomb_bug || !::Left4Bots.OtherSurvivorsInCheckpoint(-1)) // -1 is like: is everyone in checkpoint?
+		return;
+
+	::Left4Bots.ClearPipeBombs();
+
+	// If someone is holding a pipe bomb we'll also force them to switch to another weapon to make sure they don't throw the bomb while the door is closing
+	foreach (surv in ::Left4Bots.Survivors)
+	{
+		local activeWeapon = surv.GetActiveWeapon();
+		if (activeWeapon && activeWeapon.GetClassname() == "weapon_pipe_bomb")
+			::Left4Bots.BotSwitchToAnotherWeapon(surv);
+	}
+}
+
+// Handles the logics for sending survivor bots to close the door
+// player is the survivor that triggered it (the one who is entering the saferoom or speaking the close the door vocalizer line)
+::Left4Bots.HandleCloseDoor <- function (player, door = null, area = null)
+{
+	if (!Left4Bots.IsHandledSurvivor(player) || !Left4Bots.Settings.close_saferoom_door)
+		return;
+
+	if (!door)
+		door = Entities.FindByClassnameNearest("prop_door_rotating_checkpoint", player.GetOrigin(), 1000);
+	if (!door || !door.IsValid())
+	{
+		Logger.Debug("HandleCloseDoor - No door!");
+		return;
+	}
+	
+	if (!area)
+		area = NavMesh.GetNearestNavArea(door.GetOrigin(), 200, false, false);
+
+	local allBots = RandomInt(1, 100) <= Left4Bots.Settings.close_saferoom_door_all_chance;
+	if ((!allBots && !Left4Bots.IsHandledBot(player)) || !::Left4Bots.ShouldCloseSaferoomDoor(player.GetPlayerUserId(), ::Left4Bots.Settings.close_saferoom_door_behind_range))
+		return;
+
+	local state = NetProps.GetPropInt(door, "m_eDoorState"); // 0 = closed - 1 = opening - 2 = open - 3 = closing
+	if (state == 0 || state == 3)
+		return;
+
+	local doorZ = player.GetOrigin().z;
+	if (area)
+	{
+		doorZ = area.GetCenter().z;
+			
+		Left4Bots.Logger.Debug("OnGameEvent_player_entered_checkpoint - area: " + area.GetID() + " - DoorZ: " + doorZ);
+	}
+	else
+		Left4Bots.Logger.Debug("OnGameEvent_player_entered_checkpoint - area is null! - DoorZ: " + doorZ);
+
+	if (Left4Bots.IsHandledBot(player))
+	{
+		local scope = player.GetScriptScope();
+		scope.DoorAct = AI_DOOR_ACTION.Saferoom;
+		scope.DoorEnt = door; // This tells the bot to close the door. From now on, the bot will start looking for the best moment to close the door without locking himself out (will try at least)
+		scope.DoorZ = doorZ;
+	}
+
+	if (allBots)
+	{
+		foreach (bot in Left4Bots.Bots)
+		{
+			if (bot != player && ::Left4Bots.IsSurvivorInCheckpoint(bot))
+			{
+				local scope = bot.GetScriptScope();
+				scope.DoorAct = AI_DOOR_ACTION.Saferoom;
+				scope.DoorEnt = door; // This tells the bot to close the door. From now on, the bot will start looking for the best moment to close the door without locking himself out (will try at least)
+				scope.DoorZ = doorZ;
+			}
+		}
+	}
+}
+
+// Only shoot the riot police if i can see his back.
+::Left4Bots.IsRiotPolice <- function (ent, start)
+{
+	//(NetProps.GetPropInt(ent, "m_Gender") == 15)
+	local model = ent.GetModelName();
+	if (model == "models/infected/common_male_riot.mdl" || model == "models/infected/common_male_riot_l4d1.mdl")
+	{
+		local chest = ent.LookupAttachment("chest");
+		if (chest != 0) // if custom model not has this attachment, don't shoot
+		{
+			local toEnt = ent.GetOrigin() - start;
+			toEnt.Norm();
+			local forward = QAngle(0, ent.GetAttachmentAngles(chest).y, 0).Forward();
+			local dot = toEnt.Dot(forward);
+			//printl("dot: " + dot + ", back: " + (dot > 0));
+			return dot <= 0;
+		}
+		return true;
+	}
+	return false;
+}
+
+::Left4Bots.IncappedBlockNav <- function (survivor)
+{
+	local kvs = { classname = "script_nav_blocker", origin = survivor.GetOrigin(), extent = Vector(Settings.incap_block_nav_radius, Settings.incap_block_nav_radius, Settings.incap_block_nav_radius), teamToBlock = "2", affectsFlow = "0" };
+	local ent = g_ModeScript.CreateSingleSimpleEntityFromTable(kvs);
+	ent.ValidateScriptScope();
+	Logger.Debug("Created script_nav_blocker (incapped): " + ent.GetName());
+
+	DoEntFire("!self", "SetParent", "!activator", 0, survivor, ent); // I parent the nav blocker to the survivor entity so it follows him if incap crawling is enabled (not sure the nav areas are updated, though)
+	DoEntFire("!self", "BlockNav", "", 0, null, ent);
+	return ent;
+}
+
+::Left4Bots.IncappedUnblockNav <- function (blocker)
+{
+	if (!blocker || !blocker.IsValid())
+		return;
+
+	DoEntFire("!self", "UnblockNav", "", 0, null, blocker);
+	DoEntFire("!self", "Kill", "", 0.1, null, blocker);
 }
 
 // Helps update the COMMANDS.md file on the github repo

@@ -9,8 +9,11 @@
 heal_interrupt_minhealth = 40
 horde_nades_chance = 35
 jockey_redirect_damage = 45
+manual_attack_common_head_radius = 300
+manual_attack_dual_pistol_nerf = 1
 manual_attack_mindot = 0.90
-manual_attack_skill = 2
+manual_attack_special_head_radius = 300
+manual_attack_wandering = 0
 shove_deadstop_chance = 100
 spit_block_nav = 1
 tank_molotov_chance = 50
@@ -24,8 +27,11 @@ heal_interrupt_minhealth = 30
 horde_nades_chance = 35
 jockey_redirect_damage = 50
 manual_attack_always = 1
+manual_attack_common_head_radius = 450
+manual_attack_dual_pistol_nerf = 0
 manual_attack_mindot = 0.90
-manual_attack_skill = 3
+manual_attack_special_head_radius = 400
+manual_attack_wandering = 1
 scavenge_max_bots = 1
 shove_deadstop_chance = 100
 signal_chat = 1
@@ -41,8 +47,11 @@ witch_autocrown = 0";
 heal_interrupt_minhealth = 40
 horde_nades_chance = 35
 jockey_redirect_damage = 45
+manual_attack_common_head_radius = 300
+manual_attack_dual_pistol_nerf = 1
 manual_attack_mindot = 0.90
-manual_attack_skill = 2
+manual_attack_special_head_radius = 300
+manual_attack_wandering = 0
 shove_deadstop_chance = 100
 spit_block_nav = 1
 tank_molotov_chance = 50
@@ -57,8 +66,11 @@ heal_interrupt_minhealth = 30
 horde_nades_chance = 35
 jockey_redirect_damage = 50
 manual_attack_always = 1
+manual_attack_common_head_radius = 450
+manual_attack_dual_pistol_nerf = 0
 manual_attack_mindot = 0.90
-manual_attack_skill = 3
+manual_attack_special_head_radius = 400
+manual_attack_wandering = 1
 scavenge_max_bots = 1
 shove_deadstop_chance = 100
 signal_chat = 1
@@ -73,14 +85,24 @@ witch_autocrown = 0";
 	
 	// -------------------------------------------------------
 	
+	// Default settings overrides for 'c6m1_riverbank'
+	defaults["left4bots2/cfg/settings_c6m1_riverbank.txt"] <- @"handle_l4d1_survivors = 1";
+	
+	// Default settings overrides for 'c6m2_bedlam'
+	defaults["left4bots2/cfg/settings_c6m2_bedlam.txt"] <- @"handle_l4d1_survivors = 1";
+	
 	// Default settings overrides for 'c6m3_port' in 'Advanced' difficulty
 	defaults["left4bots2/cfg/settings_c6m3_port_hard.txt"] <- @"close_saferoom_door_highres = 1
 file_weapons_prefix = ""left4bots2/cfg/weapons/c6m3_port/""
 heal_interrupt_minhealth = 40
+handle_l4d1_survivors = 1
 horde_nades_chance = 35
 jockey_redirect_damage = 45
+manual_attack_common_head_radius = 450
+manual_attack_dual_pistol_nerf = 0
 manual_attack_mindot = 0.90
-manual_attack_skill = 3
+manual_attack_special_head_radius = 400
+manual_attack_wandering = 1
 scavenge_items_flow_distance = 0
 shove_deadstop_chance = 100
 spit_block_nav = 1
@@ -92,12 +114,16 @@ tank_throw_survivors_mindistance = 250";
 close_saferoom_door_all_chance = 0
 close_saferoom_door_highres = 1
 file_weapons_prefix = ""left4bots2/cfg/weapons/c6m3_port/""
+handle_l4d1_survivors = 1
 heal_interrupt_minhealth = 30
 horde_nades_chance = 35
 jockey_redirect_damage = 50
 manual_attack_always = 1
+manual_attack_common_head_radius = 450
+manual_attack_dual_pistol_nerf = 0
 manual_attack_mindot = 0.90
-manual_attack_skill = 3
+manual_attack_special_head_radius = 400
+manual_attack_wandering = 1
 scavenge_items_flow_distance = 0
 scavenge_max_bots = 1
 shove_deadstop_chance = 100
@@ -108,14 +134,14 @@ tank_throw_survivors_mindistance = 260
 witch_autocrown = 0";
 	
 	// Default settings overrides for 'c6m3_port' in the other difficulties
-	defaults["left4bots2/cfg/settings_c6m3_port.txt"] <- @"file_weapons_prefix = ""left4bots2/cfg/weapons/c6m3_port/""
+	defaults["left4bots2/cfg/settings_c6m3_port.txt"] <- @"handle_l4d1_survivors = 1
+file_weapons_prefix = ""left4bots2/cfg/weapons/c6m3_port/""
 scavenge_items_flow_distance = 0";
 	
 	// -------------------------------------------------------
 	
 	// Default convars.txt file
-	defaults["left4bots2/cfg/convars.txt"] <- @"allow_all_bot_survivor_team 1
-sb_all_bot_game 1"; // "sb_unstick 0" // TODO: unstick logic
+	defaults["left4bots2/cfg/convars.txt"] <- @"allow_all_bot_survivor_team 1"; // "sb_unstick 0" // TODO: unstick logic
 
 	// Default itemstoavoid.txt file
 	defaults["left4bots2/cfg/itemstoavoid.txt"] <- @"weapon_ammo

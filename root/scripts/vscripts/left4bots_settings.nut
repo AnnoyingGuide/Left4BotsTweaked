@@ -3,11 +3,17 @@
 	// [1/0] 1 = Prevents (at least will try) the infamous bug of the pipe bomb thrown right before transitioning to the next chapter, the bots will bug out and do nothing for the entire next chapter
 	anti_pipebomb_bug = 1
 
+	// [1/0] Enable/Disable the automation
+	automation = 1
+
 	// [1/0] Enable/Disable the autostart of the automation tasks when humans are in the team
 	automation_autostart = 0
 
 	// [1/0] Enable/Disable the automation debug text overlay (only visible to the host)
 	automation_debug = 0
+
+	// [1/0] 1 = Once the bots reach the end saferoom, a wait inside the saferoom order is automatically given to all the bots (useful in Tank Run mutation)
+	automation_stay_in_end_saferoom = 0
 
 	// Interval of the main bot Think function (default is 0.1 which means 10 ticks per second)
 	// Set the max i can get even though the think functions can go up to 30 ticks per second (interval 0.0333) and the CTerrorPlayer entities limit their think functions to max 15 ticks per second (0.06666)
@@ -164,7 +170,7 @@
 	// 1 = Yes but for the items pickup/throw only (can be useful considering that the itemstoavoid logics also affect the L4D1 bots and will likely make them not pickup any weapon with vanilla AI)
 	// 2 = Yes (full AI like the main bots)
 	// NOTE: This does only apply when the main team is the L4D2 one, it has no effect when the L4D1 survivors are spawned as the main team
-	handle_l4d1_survivors = 1
+	handle_l4d1_survivors = 2
 
 	// When the bot tries to heal with health >= this (usually they do it in the start saferoom) the addon will interrupt it, unless there is no human in the team
 	// or there are enough spare medkits around for the bot and the teammates who also need it
@@ -190,6 +196,15 @@
 
 	// When you use the "hurry" command, the bot(s) improved AI will be disabled (they will not pick-up items/execute orders/defib teammates/throw items/scavenge) for this amount of seconds
 	hurry_time = 15
+	
+	// When a survivor is incapped a nav_blocker is spawned on his position to block the nav areas in this radius if a tank is whithin incap_block_nav_tank_range from him.
+	// This is used to prevent the survivor bots to go help the downed survivor while the tank is there.
+	// 0 = Disabled
+	incap_block_nav_radius = 100
+	
+	// When a survivor is incapped (and incap_block_nav_radius > 0) a nav_blocker is spawned on his position to block the nav areas around him if a tank is whithin this range from him.
+	// This is used to prevent the survivor bots to go help the downed survivor while the tank is there.
+	incap_block_nav_tank_range = 700
 
 	// [1/0] 1 = Reverse itemstoavoid logics (tells the vanilla AI to avoid all the items except the ones in the itemstoavoid.txt file). 0 = Normal logics (vanilla AI should avoid only the items in the file)
 	// NOTE: Itemstoavoid logics only affect the VANILLA items pick-up behavior, it has no effect on the L4B2 items pick-up defined via weapon preference files and team_min* settings.
@@ -242,6 +257,13 @@
 	// [1/0] Enable/Disable the vscripted manual attack while not executing any MOVE command. 0 = Manual attack only while executing MOVE commands, 1 = Always
 	manual_attack_always = 0
 
+	// max distance of the bot will shoot enemies head, recommended short than "manual_attack_radius", so bots won't waste much ammo when shooting at far target.
+	// 0 = always shoot body
+	manual_attack_common_head_radius = 180
+
+	// 0 = like a machine gun, 1 = reduce dual pistol firing speed to 0.2s, like vanilla bot did.
+	manual_attack_dual_pistol_nerf = 1
+
 	// [0.0 - 1.0] While executing MOVE commands (or always if manual_attack_always = 1), this is how straight the bot should be looking at the enemy in order to shoot it
 	// 0.0 (or -1) = Even the enemies behind will be shoot (CSGO spinbot style)
 	// 0.6 Kill everything in sight
@@ -252,11 +274,19 @@
 	// While executing MOVE commands (or always if manual_attack_always = 1), this is the max distance of the enemies that the bot will shoot
 	manual_attack_radius = 950
 	
-	// Skill level for the vscripted manual attack
-	// 1: Aim & Shoot infected body (few skeeting hunter) & limit dual pistol dps to vanilla level (no more machine pistol)
-	// 2: + shoot head
-	// 3: + max dps + kill wandering infected
-	manual_attack_skill = 1
+	// Smooth camera rotation, turn a part of angles at a time instead of looking at the target immediately, only apply to shoot command.
+	// Depending on the set value, can easily adjust the bot's aiming speed, observer the bots at first person to check the difference.
+	// Valve use these Cvars 'sb_normal_saccade_speed = 350', 'sb_combat_saccade_speed = 1000' to contronl the default AI.
+	// 500 means bots need 0.36(180/500) seconds to turn 180 degrees.
+	// Advanced 1000, Expert 1000
+	manual_attack_saccade_speed = 500
+
+	// max distance of the bot will shoot enemies head, recommended short than "manual_attack_radius", so bots won't waste much ammo when shooting at far target.
+	// 0 = always shoot body
+	manual_attack_special_head_radius = 120
+
+	// 0 = only kill angry common incected, 1 = also wandering infected.
+	manual_attack_wandering = 0
 
 	// Maximum distance from a generic destination position for setting the travel done
 	move_end_radius = 30
@@ -510,11 +540,20 @@
 	// Chance that the bot will throw the bile jar at the tank (this check runs multiple times in a second while the tank is in range, so this chance must be pretty low to have an actual chance of no throw)
 	tank_vomitjar_chance = 1
 
-	// Bots will try to keep this maximum number of chainsaws in the entire survivor team, regardless their weapon preference
+	// Didn't like the chainsaw melee split to I removed this
 	//team_max_chainsaws = 0
+	
+	// Bots will try to keep this minimum number of snipers in the entire survivor team, regardless their weapon preference
 	team_min_snipers = 0
+	
+	// Bots will try to keep this minimum number of pills in the entire survivor team, regardless their weapon preference
 	team_min_pills = 0
+	
+	// Bots will try to keep this minimum number of adrenaline in the entire survivor team, regardless their weapon preference
 	team_min_adren = 0
+	
+	// Bots will try to keep this maximum number of magnums in the entire survivor team, regardless their weapon preference
+	team_max_magnums = 1
 
 	// Bots will try to keep this maximum number of melee weapons in the entire survivor team, regardless their weapon preference
 	team_max_melee = 2

@@ -41,7 +41,7 @@ enum AI_AIM_TYPE {
 	Shove, //shove
 	Order, //normal order
 	Throw, //grenade
-	Rock, //we can dodge it, so put it in front of the witch
+	Rock,  //we can dodge it, so put it in front of the witch
 	Witch
 }
 
@@ -135,17 +135,21 @@ enum AI_AIM_TYPE {
 
 	//lxc add
 	scope.AimType <- AI_AIM_TYPE.None;
+	scope.AimHead <- true;
 	scope.AimEnt <- null; //if target is moving, we can follow it current pos each time
 	scope.AimPos <- null; //for fixed pos
 	//↑ only set one of this.
 	scope.AimPitch <- 0;
 	scope.AimYaw <- 0;
+	scope.LastAimTime <- 0;
+	scope.LastAimAngles <- null;
 	scope.Aim_StartTime <- 0;
 	scope.Aim_Duration <- 0;
 	scope.Aim_TimeStamp <- 0; //if not update target until this time, close func
 	scope["BotAim"] <- AIFuncs.BotAim;
 	scope["BotSetAim"] <- AIFuncs.BotSetAim;
 	scope["BotUnSetAim"] <- AIFuncs.BotUnSetAim;
+	scope["BotLookAt"] <- AIFuncs.BotLookAt;
 	//lxc don't send move command until
 	scope.NextMoveTime <- 0;
 	//lxc lock func
@@ -155,6 +159,8 @@ enum AI_AIM_TYPE {
 	
 	//lxc add
 	scope.LastFireTime <- 0;
+	scope.Airborne <- false;
+	scope.AttackButtonForced <- false;
 	
 	AddThinkToEnt(bot, "BotThink_Main");
 }
@@ -217,22 +223,28 @@ enum AI_AIM_TYPE {
 
 	//lxc add
 	scope.AimType <- AI_AIM_TYPE.None;
+	scope.AimHead <- true;
 	scope.AimEnt <- null; //if target is moving, we can follow it current pos each time
 	scope.AimPos <- null; //for fixed pos
 	//↑ only set one of this.
 	scope.AimPitch <- 0;
 	scope.AimYaw <- 0;
+	scope.LastAimTime <- 0;
+	scope.LastAimAngles <- null;
 	scope.Aim_StartTime <- 0;
 	scope.Aim_Duration <- 0;
 	scope.Aim_TimeStamp <- 0; //if not update target until this time, close func
 	scope["BotAim"] <- AIFuncs.BotAim;
 	scope["BotSetAim"] <- AIFuncs.BotSetAim;
 	scope["BotUnSetAim"] <- AIFuncs.BotUnSetAim;
+	scope["BotLookAt"] <- AIFuncs.BotLookAt;
 	//lxc don't send move command until
 	scope.NextMoveTime <- 0;
 	
 	//lxc add
 	scope.LastFireTime <- 0;
+	scope.Airborne <- false;
+	scope.AttackButtonForced <- false;
 	
 	AddThinkToEnt(bot, "BotThink_Main");
 }
@@ -284,6 +296,15 @@ enum AI_AIM_TYPE {
 			//	SpeakRandomVocalize(bot, VocalizerYes, RandomFloat(0.5, 1.0));
 
 			order.DestRadius <- Settings.move_end_radius_heal;
+			order.MaxSeparation <- 0;
+			break;
+		}
+		case "tempheal":
+		{
+			//if (from)
+			//	SpeakRandomVocalize(bot, VocalizerYes, RandomFloat(0.5, 1.0));
+
+			order.DestRadius <- Settings.move_end_radius;
 			order.MaxSeparation <- 0;
 			break;
 		}
@@ -602,13 +623,6 @@ enum AI_AIM_TYPE {
 				ret += ", ";
 			ret += "[" + i + "]: " + scope.WeapPref[i].len();
 		}
-		ret += "\n- WeapNoPref: ";
-		for (local i = 0; i < scope.WeapNoPref.len(); i++)
-		{
-			if (i > 0)
-				ret += ", ";
-			ret += scope.WeapNoPref[i].tostring();
-		}
 		ret += "\n- Num. WeaponsToSearch: " + scope.WeaponsToSearch.len() + "\n";
 		ret += "- Num. UpgradesToSearch: " + scope.UpgradesToSearch.len() + "\n";
 	}
@@ -663,13 +677,6 @@ enum AI_AIM_TYPE {
 			if (i > 0)
 				ret += ", ";
 			ret += "[" + i + "]: " + scope.WeapPref[i].len();
-		}
-		ret += "\n- WeapNoPref: ";
-		for (local i = 0; i < scope.WeapNoPref.len(); i++)
-		{
-			if (i > 0)
-				ret += ", ";
-			ret += scope.WeapNoPref[i].tostring();
 		}
 		ret += "\n- Num. WeaponsToSearch: " + scope.WeaponsToSearch.len() + "\n";
 		ret += "- Num. UpgradesToSearch: " + scope.UpgradesToSearch.len() + "\n";
@@ -1039,9 +1046,22 @@ enum AI_AIM_TYPE {
 			if (DelayedReset)
 				BotReset(true);
 		}
+		if (AimType != AI_AIM_TYPE.None)
+			BotUnSetAim();
+		
 		return L4B.Settings.bot_think_interval;
 	}
-
+	
+	if (Airborne) // look at foot, simple way to fix the not fire bug
+	{
+		if (NetProps.GetPropEntity(self, "m_hGroundEntity"))
+		{
+			Left4Utils.BotLookAt(self, Origin);
+			Airborne = false;
+		}
+		return L4B.Settings.bot_think_interval;
+	}
+	
 	// Don't do anything if the bot is on a ladder or the mode hasn't started yet
 	if (NetProps.GetPropInt(self, "movetype") == 9 /* MOVETYPE_LADDER */ || !L4B.ModeStarted)
 		return L4B.Settings.bot_think_interval;
@@ -1072,6 +1092,8 @@ enum AI_AIM_TYPE {
 			if (to && to.IsValid())
 			{
 				self.SetVelocity(Vector(0,0,0));
+				// need more step to avoid fall damage
+				NetProps.SetPropInt(self, "m_fFlags", NetProps.GetPropInt(self, "m_fFlags") | 1); // 1 = FL_ONGROUND
 				//lxc fix "warp" pos
 				self.SetOrigin(to.IsHangingFromLedge() ? NetProps.GetPropVector(to, "m_hangStandPos") : to.GetOrigin());
 
@@ -1119,7 +1141,8 @@ enum AI_AIM_TYPE {
 	if (CurTime < HurryUntil) // TODO: Maybe we should also stop high priority moves
 	{
 		// "hurry" command was used
-		BotThink_Misc(); // Still need to trigger car alarms
+		if (FuncI == 5)
+			BotThink_Misc(); // Still need to trigger car alarms
 		return L4B.Settings.bot_think_interval;
 	}
 
@@ -1130,12 +1153,15 @@ enum AI_AIM_TYPE {
 	{
 		case 1:
 		{
-			BotThink_Pickup();
+			//lxc avoid interrupt other order
+			// in test, although bot are throwing a grenade, he also turn to pickup item, then throw the grenade at feet.
+			if (AimType <= AI_AIM_TYPE.Shoot)
+				BotThink_Pickup();
 			break;
 		}
 		case 2:
 		{
-			BotThink_Defib();
+			BotThink_Defib(); // TODO: turn this into an order
 			break;
 		}
 		case 3:
@@ -1157,9 +1183,7 @@ enum AI_AIM_TYPE {
 			break;
 		}
 	}
-
-	BotManualAttack();
-
+	
 	return L4B.Settings.bot_think_interval;
 }
 
@@ -1194,9 +1218,22 @@ enum AI_AIM_TYPE {
 			if (DelayedReset)
 				BotReset(true);
 		}
+		if (AimType != AI_AIM_TYPE.None)
+			BotUnSetAim();
+		
 		return L4B.Settings.bot_think_interval;
 	}
-
+	
+	if (Airborne) // look at foot, simple way to fix the not fire bug
+	{
+		if (NetProps.GetPropEntity(self, "m_hGroundEntity"))
+		{
+			Left4Utils.BotLookAt(self, Origin);
+			Airborne = false;
+		}
+		return L4B.Settings.bot_think_interval;
+	}
+	
 	// Don't do anything if the bot is on a ladder or the mode hasn't started yet
 	if (NetProps.GetPropInt(self, "movetype") == 9 /* MOVETYPE_LADDER */ || !L4B.ModeStarted)
 		return L4B.Settings.bot_think_interval;
@@ -1222,10 +1259,9 @@ enum AI_AIM_TYPE {
 	{
 		case 1:
 		{
-			if (AimType >= AI_AIM_TYPE.Throw) //lxc don't do anything if Throw
-				return L4B.Settings.bot_think_interval;
-			
-			BotThink_Pickup();
+			//lxc avoid interrupt other order
+			if (AimType <= AI_AIM_TYPE.Shoot)
+				BotThink_Pickup();
 			break;
 		}
 		case 3:
@@ -1233,10 +1269,13 @@ enum AI_AIM_TYPE {
 			BotThink_Throw();
 			break;
 		}
+		case 5:
+		{
+			BotManualAttack();
+			break;
+		}
 	}
-
-	BotManualAttack();
-
+	
 	return L4B.Settings.bot_think_interval;
 }
 
@@ -1621,6 +1660,13 @@ enum AI_AIM_TYPE {
 	
 	if (CurrentOrder.OrderType == "follow")
 	{
+		if (CurrentOrder.DestEnt.IsDead())
+		{
+			// no sense in "following" dead player, cancel order
+			BotCancelCurrentOrder();
+			return;
+		}
+		
 		if (BotIsInPause(CurrentOrder.CanPause, false, false, CurrentOrder.MaxSeparation, CurrentOrder.DestEnt, L4B.Settings.follow_pause_radius))
 			return;
 	}
@@ -1788,6 +1834,9 @@ enum AI_AIM_TYPE {
 			L4B.TriggerCarAlarm(self, groundEnt);
 	}
 	
+	//lxc Move from BotThink_Main to here, almost no difference about kill infected, and it can also save performance
+	BotManualAttack();
+	
 	//lxc lock func
 	BotLockShoot();
 }
@@ -1835,24 +1884,28 @@ enum AI_AIM_TYPE {
 	else if (target && canShove) // TODO: add dot?
 	{
 		//lxc z_gun_swing_duration: 0.2 ** How long shove attack is active (can shove an entities)
-		BotSetAim(AI_AIM_TYPE.Shove, L4B.GetHitPos(target), 0.233);
+		BotSetAim(AI_AIM_TYPE.Shove, L4B.GetHitPos(target), 0.3);
 		L4B.PlayerPressButton(self, BUTTON_SHOVE);
 	}												// depending on manual_attack_mindot, the desired FOV might be larger than the m_hasVisibleThreats FOV, so this condition has to be removed (thx MutinCholer)
 	else if (((MovePos && Paused == 0) || L4B.Settings.manual_attack_always) /*&& NetProps.GetPropInt(self, "m_hasVisibleThreats")*/) // m_hasVisibleThreats indicates that a threat is in the bot's current field of view. An infected behind the bot won't set this
 	{
 		// If no close target or we cannot melee or shove it at the moment, then handle manual shooting to targets in our field of view
-		if (ActiveWeapon && !NetProps.GetPropInt(ActiveWeapon, "m_bInReload"))
+		if (ActiveWeapon && (ActiveWeaponSlot == 0 || ActiveWeaponSlot == 1) && !NetProps.GetPropInt(ActiveWeapon, "m_bInReload"))
 		{
-			if (ActiveWeaponSlot == 0 || ActiveWeaponSlot == 1)
+			// This check fixes weapon can't fire when holding the ATTACK btton during deploy, any reason for switching weapons may cause it.
+			if (self.IsFiringWeapon() || CurTime >= NetProps.GetPropFloat(ActiveWeapon, "m_flNextPrimaryAttack"))
 			{
 				local tgt = L4B.FindBotNearestEnemy(self, Origin, L4B.GetWeaponRangeById(ActiveWeaponId), L4B.Settings.manual_attack_mindot);
 				if (tgt)
 				{
-					BotSetAim(AI_AIM_TYPE.Shoot, tgt, 0.1); //need refresh target next time
+					// grenade launcher may fly overhead, so aim the foot
+					if (ActiveWeaponId == Left4Utils.WeaponId.weapon_grenade_launcher)
+						tgt.head = null;
+					BotSetAim(AI_AIM_TYPE.Shoot, tgt.ent, 0.2, 0, 0, tgt.head); //need refresh target next time
 					Left4Utils.PlayerForceButton(self, BUTTON_ATTACK);
 				}
 				// Bots always reload for no reason while executing a MOVE command. Don't let them if there are visible threats and still rounds in the magazine
-				if (ActiveWeapon.Clip1() >= 5)
+				if ((tgt || !NetProps.GetPropInt(self, "m_isCalm")) && ActiveWeapon.Clip1() >= 5)
 				{
 					Left4Utils.PlayerDisableButton(self, BUTTON_RELOAD);
 					return;
@@ -2131,7 +2184,9 @@ enum AI_AIM_TYPE {
 	local wantsDefib = false;
 	local wantsUpgdInc = false;
 	local wantsUpgdExp = false;
-	local hasSniper = false;
+	local hasT1Sniper = false;
+	local hasT2Sniper = false;
+	local hasMagnum = false;
 	local hasPills = false;
 	local wantsPills = false;
 	local hasAdren = false;
@@ -2154,7 +2209,8 @@ enum AI_AIM_TYPE {
 				case 0:
 					hasT1Shotgun = (currWeps[i] == Left4Utils.WeaponId.weapon_shotgun_chrome) || (currWeps[i] == Left4Utils.WeaponId.weapon_pumpshotgun);
 					hasT2Shotgun = (currWeps[i] == Left4Utils.WeaponId.weapon_autoshotgun) || (currWeps[i] == Left4Utils.WeaponId.weapon_shotgun_spas);
-					hasSniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_military) || (currWeps[i] == Left4Utils.WeaponId.weapon_hunting_rifle) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_scout) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_awp);
+					hasT1Sniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_scout);
+					hasT2Sniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_military) || (currWeps[i] == Left4Utils.WeaponId.weapon_hunting_rifle) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_awp);
 					priAmmoPercent = Left4Utils.GetAmmoPercent(inv[slot]);
 					hasAmmoUpgrade = NetProps.GetPropInt(inv[slot], "m_nUpgradedPrimaryAmmoLoaded") >= L4B.Settings.pickups_wep_upgraded_ammo;
 					hasLaserSight = (NetProps.GetPropInt(inv[slot], "m_upgradeBitVec") & 4) != 0;
@@ -2168,6 +2224,7 @@ enum AI_AIM_TYPE {
 						//hasDualPistol = NetProps.GetPropInt(inv[slot], "m_hasDualWeapons") > 0; // ???? This doesn't work sometimes
 						hasDualPistol = NetProps.GetPropInt(inv[slot], "m_isDualWielding") > 0;
 					hasMelee = currWeps[i] > Left4Utils.MeleeWeaponId.none;
+					hasMagnum = currWeps[i] == Left4Utils.WeaponId.weapon_pistol_magnum;
 
 					break;
 					
@@ -2197,7 +2254,6 @@ enum AI_AIM_TYPE {
 
 	local slotIdx = 0;
 	local useWeapon = (slotIdx in UseWeapons) ? UseWeapons[slotIdx] : 0;
-	local noPref = WeapNoPref[slotIdx];
 	if (L4B.Settings.pickups_wep_always || (MovePos && MoveType == AI_MOVE_TYPE.Order && Paused == 0))
 	{
 		// PRIMARY
@@ -2220,34 +2276,61 @@ enum AI_AIM_TYPE {
 					WeaponsToSearch[Left4Utils.WeaponId.weapon_shotgun_spas] <- 0;
 				}
 			}
-			else if (L4B.TeamSnipers <= L4B.Settings.team_min_snipers && (hasSniper) && priAmmoPercent > L4B.Settings.pickups_wep_replace_ammo)
+			else if (L4B.TeamSnipers <= L4B.Settings.team_min_snipers && (hasT1Sniper || hasT2Sniper) && priAmmoPercent > L4B.Settings.pickups_wep_replace_ammo)
 			{
-				// keep sniper
+				//keep it
+				
+				if (!hasT2Sniper)
+				{
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_military] <- 0;
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_hunting_rifle] <- 0;
+					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_awp] <- 0;
+				}
 			}
 			else
 			{
 				// We either don't have a shotgun or TeamShotguns > team_min_shotguns so we can follow our preference and try to get an higher priority weapon
-
-				if (noPref)
+				
+				local stop = false; // If find weapon in the current Tier, stop add weapons.
+				foreach (Tier, list in WeapPref[slotIdx])
 				{
-					// If priority must be ignored, add all the listed weapons for this slot. Order doesn't matter
-					if (currWeps[slotIdx] == Left4Utils.WeaponId.none || priAmmoPercent < L4B.Settings.pickups_wep_replace_ammo)
+					if (list.len() < 2) // The list must contain at least two items: [noPref, weapon...]
+						continue;
+					
+					if (list[0]) // noPref
 					{
-						for (local x = 0; x < WeapPref[slotIdx].len(); x++)
-							WeaponsToSearch[WeapPref[slotIdx][x]] <- 0;
-					}
-				}
-				else
-				{
-					for (local x = 0; x < WeapPref[slotIdx].len(); x++)
-					{
-						// Add all the preference weapons that have higher priority than the one we have in the inventory
-						// Or add them all if ammo percent of our primary weapon is < pickups_wep_replace_ammo
-						local prefId = WeapPref[slotIdx][x];
-						if (prefId != currWeps[slotIdx] || priAmmoPercent < L4B.Settings.pickups_wep_replace_ammo)
-							WeaponsToSearch[prefId] <- 0;
+						// If priority must be ignored, add all the listed weapons for this slot. Order doesn't matter
+						if (currWeps[slotIdx] == Left4Utils.WeaponId.none || priAmmoPercent < L4B.Settings.pickups_wep_replace_ammo || list.find(currWeps[slotIdx]) == null) // <- this will also include the first element (noPref) but that boolean won't match an integer with the weapon id so it shouldn't be a problem
+						{
+							// Start from 1 to skip the noPref element
+							for (local x = 1; x < list.len(); x++)
+								WeaponsToSearch[list[x]] <- 0;
+						}
 						else
-							break;
+						{
+							stop = true;
+						}
+					}
+					else
+					{
+						for (local x = 1; x < list.len(); x++)
+						{
+							// Add all the preference weapons that have higher priority than the one we have in the inventory
+							// Or add them all if ammo percent of our primary weapon is < pickups_wep_replace_ammo
+							local prefId = list[x];
+							if (prefId != currWeps[slotIdx] || priAmmoPercent < L4B.Settings.pickups_wep_replace_ammo)
+								WeaponsToSearch[prefId] <- 0;
+							else
+							{
+								stop = true;
+								break;
+							}
+						}
+					}
+					
+					if (stop)
+					{
+						break;
 					}
 				}
 
@@ -2276,7 +2359,6 @@ enum AI_AIM_TYPE {
 		// SECONDARY
 		slotIdx = 1;
 		useWeapon = (slotIdx in UseWeapons) ? UseWeapons[slotIdx] : 0;
-		noPref = WeapNoPref[slotIdx];
 		if (useWeapon != 0 && useWeapon == currWeps[slotIdx])
 		{
 			// They ordered to pickup a weapon with the "use" order and we already picked that weapon up. No need to look for other weapons
@@ -2286,36 +2368,63 @@ enum AI_AIM_TYPE {
 			if (useWeapon != 0)
 				WeaponsToSearch[useWeapon] <- 0; // Always add the "use" weapon, if any
 			
-			for (local x = 0; x < WeapPref[slotIdx].len(); x++)
+			local stop = false; // If find weapon in the current Tier, stop add weapons.
+			foreach (Tier, list in WeapPref[slotIdx])
 			{
-				local prefId = WeapPref[slotIdx][x];
-				if ((hasMelee || hasChainsaw) && L4B.TeamMelee > L4B.Settings.team_max_melee)
+				if (list.len() < 2) // The list must contain at least two items: [noPref, weapon...]
+					continue;
+				
+				for (local x = 1; x < list.len(); x++)
 				{
-					// Try to get rid of melee by replacing with any non melee secondary
-					if ((prefId < Left4Utils.MeleeWeaponId.none) || (prefId != Left4Utils.WeaponId.weapon_chainsaw))
+					local prefId = list[x];
+					if ((hasMelee || hasChainsaw) && L4B.TeamMelee > L4B.Settings.team_max_melee)
 					{
-						WeaponsToSearch[prefId] <- 0;
-					}
-				}
-				else
-				{
-					// If noPref and slot is currently empty, add all the weapons. Order doesn't matter
-					// If !noPref add all the preference weapons that have higher priority than the one we have in the inventory
-					if ((noPref && currWeps[slotIdx] == Left4Utils.WeaponId.none) || (!noPref && prefId != currWeps[slotIdx]))
-					{
-						if ((prefId == Left4Utils.WeaponId.weapon_chainsaw && L4B.TeamMelee >= L4B.Settings.team_max_melee) || (prefId > Left4Utils.MeleeWeaponId.none && L4B.TeamMelee >= L4B.Settings.team_max_melee && !hasMelee))
+						// Try to get rid of melee by replacing with any non melee secondary
+						if ((prefId < Left4Utils.MeleeWeaponId.none) || (prefId != Left4Utils.WeaponId.weapon_chainsaw))
 						{
-							// Take care of the team_max_chainsaws / team_max_melee limits
-						}
-						else if ((currWeps[0] == Left4Utils.WeaponId.none && prefId > Left4Utils.MeleeWeaponId.none && !L4B.Settings.pickups_melee_noprimary) || (currWeps[0] == Left4Utils.WeaponId.none && prefId == Left4Utils.WeaponId.weapon_chainsaw && !L4B.Settings.pickups_melee_noprimary))
-						{
-							// Don't pickup melee weapons if we don't have a primary weapon and pickups_melee_noprimary is 0
-						}
-						else
 							WeaponsToSearch[prefId] <- 0;
+						}
+					}
+					else if ((hasMagnum && L4B.TeamMagnums > L4B.Settings.team_max_magnums))
+					{
+						// Try to get rid of melee by replacing with any non melee secondary
+						if (prefId != Left4Utils.WeaponId.weapon_pistol_magnum)
+						{
+							WeaponsToSearch[prefId] <- 0;
+						}
 					}
 					else
-						break;
+					{
+						// If noPref and slot is currently empty, add all the weapons. Order doesn't matter
+						// If !noPref add all the preference weapons that have higher priority than the one we have in the inventory
+						if (list[0] ? currWeps[slotIdx] == Left4Utils.WeaponId.none || list.find(currWeps[slotIdx]) == null : prefId != currWeps[slotIdx])
+						{
+							if ((prefId == Left4Utils.WeaponId.weapon_chainsaw && L4B.TeamMelee >= L4B.Settings.team_max_melee) || (prefId > Left4Utils.MeleeWeaponId.none && L4B.TeamMelee >= L4B.Settings.team_max_melee && !hasMelee))
+							{
+								// Take care of the team_max_chainsaws / team_max_melee limits
+							}
+							else if ((currWeps[0] == Left4Utils.WeaponId.none && prefId > Left4Utils.MeleeWeaponId.none && !L4B.Settings.pickups_melee_noprimary) || (currWeps[0] == Left4Utils.WeaponId.none && prefId == Left4Utils.WeaponId.weapon_chainsaw && !L4B.Settings.pickups_melee_noprimary))
+							{
+								// Don't pickup melee weapons if we don't have a primary weapon and pickups_melee_noprimary is 0
+							}
+							else if ((prefId == Left4Utils.WeaponId.weapon_pistol_magnum && L4B.TeamMagnums >= L4B.Settings.team_max_magnums && !hasMagnum))
+							{
+								//We good
+							}
+							else
+								WeaponsToSearch[prefId] <- 0;
+						}
+						else
+						{
+							stop = true;
+							break;
+						}
+					}
+				}
+				
+				if (stop)
+				{
+					break;
 				}
 			}
 		}
@@ -2326,10 +2435,10 @@ enum AI_AIM_TYPE {
 			// We have a pistol, it's not dual, we likely aren't searching another one due to how priorities work... so add it again to get a dual
 			WeaponsToSearch[Left4Utils.WeaponId.weapon_pistol] <- 0;
 		}
-
+		
 		if (hasMelee && !hasChainsaw)
 		{
-			// We have a melee but it ain't a chainsaw so lets get one (shitty fix for a strange issue I've ran into with chainsaws)
+			// We have a melee but it ain't a chainsaw so lets get one
 			WeaponsToSearch[Left4Utils.WeaponId.weapon_chainsaw] <- 0;
 		}
 	}
@@ -2337,7 +2446,6 @@ enum AI_AIM_TYPE {
 	// THROWABLES
 	slotIdx = 2;
 	useWeapon = (slotIdx in UseWeapons) ? UseWeapons[slotIdx] : 0;
-	noPref = WeapNoPref[slotIdx];
 	if (useWeapon != 0 && useWeapon == currWeps[slotIdx])
 	{
 		// They ordered to pickup a weapon with the "use" order and we already picked that weapon up. No need to look for other weapons
@@ -2347,41 +2455,60 @@ enum AI_AIM_TYPE {
 		if (useWeapon != 0)
 			WeaponsToSearch[useWeapon] <- 0; // Always add the "use" weapon, if any
 		
-		if (noPref)
+		local stop = false; // If find weapon in the current Tier, stop add weapons.
+		foreach (Tier, list in WeapPref[slotIdx])
 		{
-			// If noPref and slot is currently empty, add all the listed items. Order doesn't matter
-			if (currWeps[slotIdx] == Left4Utils.WeaponId.none)
+			if (list.len() < 2) // The list must contain at least two items: [noPref, weapon...]
+				continue;
+			
+			if (list[0]) // noPref
 			{
-				for (local x = 0; x < WeapPref[slotIdx].len(); x++)
+				// If noPref and slot is currently empty, add all the listed items. Order doesn't matter
+				if (currWeps[slotIdx] == Left4Utils.WeaponId.none || list.find(currWeps[slotIdx]) == null)
 				{
-					// Just take note of all the requested items, we'll build the search list later
-					local prefId = WeapPref[slotIdx][x];
-					if (prefId == Left4Utils.WeaponId.weapon_molotov)
-						wantsMolotov = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_pipe_bomb)
-						wantsPipeBomb = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_vomitjar)
-						wantsVomitJar = true;
-				}
-			}
-		}
-		else
-		{
-			for (local x = 0; x < WeapPref[slotIdx].len(); x++)
-			{
-				// Just take note of the requested higher priority items, we'll build the search list later
-				local prefId = WeapPref[slotIdx][x];
-				if (prefId != currWeps[slotIdx])
-				{
-					if (prefId == Left4Utils.WeaponId.weapon_molotov)
-						wantsMolotov = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_pipe_bomb)
-						wantsPipeBomb = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_vomitjar)
-						wantsVomitJar = true;
+					for (local x = 1; x < list.len(); x++)
+					{
+						// Just take note of all the requested items, we'll build the search list later
+						local prefId = list[x];
+						if (prefId == Left4Utils.WeaponId.weapon_molotov)
+							wantsMolotov = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_pipe_bomb)
+							wantsPipeBomb = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_vomitjar)
+							wantsVomitJar = true;
+					}
 				}
 				else
-					break;
+				{
+					stop = true;
+				}
+			}
+			else
+			{
+				for (local x = 1; x < list.len(); x++)
+				{
+					// Just take note of the requested higher priority items, we'll build the search list later
+					local prefId = list[x];
+					if (prefId != currWeps[slotIdx])
+					{
+						if (prefId == Left4Utils.WeaponId.weapon_molotov)
+							wantsMolotov = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_pipe_bomb)
+							wantsPipeBomb = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_vomitjar)
+							wantsVomitJar = true;
+					}
+					else
+					{
+						stop = true;
+						break;
+					}
+				}
+			}
+			
+			if (stop)
+			{
+				break;
 			}
 		}
 		
@@ -2466,7 +2593,6 @@ enum AI_AIM_TYPE {
 	// MEDKIT
 	slotIdx = 3;
 	useWeapon = (slotIdx in UseWeapons) ? UseWeapons[slotIdx] : 0;
-	noPref = WeapNoPref[slotIdx];
 	if (useWeapon != 0 && useWeapon == currWeps[slotIdx])
 	{
 		// They ordered to pickup a weapon with the "use" order and we already picked that weapon up. No need to look for other weapons
@@ -2476,45 +2602,64 @@ enum AI_AIM_TYPE {
 		if (useWeapon != 0)
 			WeaponsToSearch[useWeapon] <- 0; // Always add the "use" weapon, if any
 		
-		if (noPref)
+		local stop = false; // If find weapon in the current Tier, stop add weapons.
+		foreach (Tier, list in WeapPref[slotIdx])
 		{
-			// If noPref and slot is currently empty, add all the listed items. Order doesn't matter
-			if (currWeps[slotIdx] == Left4Utils.WeaponId.none)
+			if (list.len() < 2) // The list must contain at least two items: [noPref, weapon...]
+				continue;
+			
+			if (list[0]) // noPref
 			{
-				for (local x = 0; x < WeapPref[slotIdx].len(); x++)
+				// If noPref and slot is currently empty, add all the listed items. Order doesn't matter
+				if (currWeps[slotIdx] == Left4Utils.WeaponId.none || list.find(currWeps[slotIdx]) == null)
 				{
-					// Just take note of all the requested items, we'll build the search list later
-					local prefId = WeapPref[slotIdx][x];
-					if (prefId == Left4Utils.WeaponId.weapon_first_aid_kit)
-						wantsMedkit = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_defibrillator)
-						wantsDefib = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_incendiary)
-						wantsUpgdInc = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_explosive)
-						wantsUpgdExp = true;
-				}
-			}
-		}
-		else
-		{
-			for (local x = 0; x < WeapPref[slotIdx].len(); x++)
-			{
-				// Just take note of the requested higher priority items, we'll build the search list later
-				local prefId = WeapPref[slotIdx][x];
-				if (prefId != currWeps[slotIdx])
-				{
-					if (prefId == Left4Utils.WeaponId.weapon_first_aid_kit)
-						wantsMedkit = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_defibrillator)
-						wantsDefib = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_incendiary)
-						wantsUpgdInc = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_explosive)
-						wantsUpgdExp = true;
+					for (local x = 1; x < list.len(); x++)
+					{
+						// Just take note of all the requested items, we'll build the search list later
+						local prefId = list[x];
+						if (prefId == Left4Utils.WeaponId.weapon_first_aid_kit)
+							wantsMedkit = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_defibrillator)
+							wantsDefib = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_incendiary)
+							wantsUpgdInc = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_explosive)
+							wantsUpgdExp = true;
+					}
 				}
 				else
-					break;
+				{
+					stop = true;
+				}
+			}
+			else
+			{
+				for (local x = 1; x < list.len(); x++)
+				{
+					// Just take note of the requested higher priority items, we'll build the search list later
+					local prefId = list[x];
+					if (prefId != currWeps[slotIdx])
+					{
+						if (prefId == Left4Utils.WeaponId.weapon_first_aid_kit)
+							wantsMedkit = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_defibrillator)
+							wantsDefib = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_incendiary)
+							wantsUpgdInc = true;
+						else if (prefId == Left4Utils.WeaponId.weapon_upgradepack_explosive)
+							wantsUpgdExp = true;
+					}
+					else
+					{
+						stop = true;
+						break;
+					}
+				}
+			}
+			
+			if (stop)
+			{
+				break;
 			}
 		}
 		
@@ -2597,7 +2742,6 @@ enum AI_AIM_TYPE {
 	// PILLS
 	slotIdx = 4;
 	useWeapon = (slotIdx in UseWeapons) ? UseWeapons[slotIdx] : 0;
-	noPref = WeapNoPref[slotIdx];
 	if (useWeapon != 0 && useWeapon == currWeps[slotIdx])
 	{
 		// They ordered to pickup a weapon with the "use" order and we already picked that weapon up. No need to look for other weapons
@@ -2607,37 +2751,44 @@ enum AI_AIM_TYPE {
 		if (useWeapon != 0)
 			WeaponsToSearch[useWeapon] <- 0; // Always add the "use" weapon, if any
 		
-		if (noPref)
+		local stop = false; // If find weapon in the current Tier, stop add weapons.
+		foreach (Tier, list in WeapPref[slotIdx])
 		{
-			// If noPref and slot is currently empty, add all the listed items. Order doesn't matter
-			if (currWeps[slotIdx] == Left4Utils.WeaponId.none)
+			if (list.len() < 2) // The list must contain at least two items: [noPref, weapon...]
+				continue;
+			
+			if (list[0]) // noPref
 			{
-				for (local x = 0; x < WeapPref[slotIdx].len(); x++)
+				// If priority must be ignored, add all the listed weapons for this slot. Order doesn't matter
+				if (currWeps[slotIdx] == Left4Utils.WeaponId.none || list.find(currWeps[slotIdx]) == null)
 				{
-					// Just take note of all the requested items, we'll build the search list later
-					local prefId = WeapPref[slotIdx][x];
-					if (prefId == Left4Utils.WeaponId.weapon_adrenaline)
-						wantsAdren = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_pain_pills)
-						wantsPills = true;
-				}
-			}
-		}
-		else
-		{
-			for (local x = 0; x < WeapPref[slotIdx].len(); x++)
-			{
-				// Just take note of the requested higher priority items, we'll build the search list later
-				local prefId = WeapPref[slotIdx][x];
-				if (prefId != currWeps[slotIdx])
-				{
-					if (prefId == Left4Utils.WeaponId.weapon_adrenaline)
-						wantsAdren = true;
-					else if (prefId == Left4Utils.WeaponId.weapon_pain_pills)
-						wantsPills = true;
+					for (local x = 1; x < list.len(); x++)
+						WeaponsToSearch[list[x]] <- 0;
 				}
 				else
-					break;
+				{
+					stop = true;
+				}
+			}
+			else
+			{
+				for (local x = 1; x < list.len(); x++)
+				{
+					// Add all the preference weapons that have higher priority than the one we have in the inventory
+					local prefId = list[x];
+					if (prefId != currWeps[slotIdx])
+						WeaponsToSearch[prefId] <- 0;
+					else
+					{
+						stop = true;
+						break;
+					}
+				}
+			}
+			
+			if (stop)
+			{
+				break;
 			}
 		}
 		
@@ -2821,6 +2972,26 @@ enum AI_AIM_TYPE {
 		}
 		else
 			BotMoveTo(CurrentOrder.DestEnt.GetOrigin(), true);
+	}
+	else if (CurrentOrder.OrderType == "tempheal")
+	{
+		// But do we have pills/adrenaline?
+		local item = ::Left4Utils.GetInventoryItemInSlot(self, INV_SLOT_PILLS);
+		if (!item || !item.IsValid())
+		{
+			// Nope, nothing to do then
+			//L4B.Logger.Warning("[AI]" + self.GetPlayerName() + " can't execute 'tempheal' order; no pills/adrenaline in inventory");
+
+			BotFinalizeCurrentOrder();
+			return;
+		}
+
+		self.SwitchToItem(item.GetClassname());
+
+		// We have to heal ourselves, we don't really need to move
+		MovePos = Origin; // Set this or BotThink_Orders will call BotInitializeCurrentOrder again
+
+		BotFinalizeCurrentOrder();
 	}
 	else
 	{
@@ -3087,6 +3258,35 @@ enum AI_AIM_TYPE {
 			}
 			else
 				L4B.Logger.Warning("[AI]" + self.GetPlayerName() + " can't execute 'heal' order; no medkit in inventory");
+
+			break;
+		}
+		case "tempheal":
+		{
+			local item = ::Left4Utils.GetInventoryItemInSlot(self, INV_SLOT_PILLS);
+			if (item && item.IsValid())
+			{
+				if (ActiveWeapon && ActiveWeapon.GetClassname() == item.GetClassname())
+				{
+					// Are we ready to use the pills/adrenaline?
+					if (CurTime > NetProps.GetPropFloat(ActiveWeapon, "m_flNextPrimaryAttack") + 0.1) // <- Add a little delay or the animation will be bugged
+					{
+						// Yes
+						L4B.Logger.Info("[AI]" + self.GetPlayerName() + " is temphealing");
+
+						L4B.PlayerPressButton(self, BUTTON_ATTACK, CurrentOrder.HoldTime, null, 0, 0, true); // <- NOTE: Vanilla AI will likely interrupt the healing if lockLook is false
+					}
+					else
+						orderComplete = false; // must wait
+				}
+				else
+				{
+					orderComplete = false; // must wait
+					self.SwitchToItem(item.GetClassname());
+				}
+			}
+			else
+				L4B.Logger.Warning("[AI]" + self.GetPlayerName() + " can't execute 'tempheal' order; no pills/adrenaline in inventory");
 
 			break;
 		}
@@ -3623,16 +3823,20 @@ enum AI_AIM_TYPE {
 }
 
 //lxc
-::Left4Bots.AIFuncs.BotSetAim <- function (type, target, duration, pitch = 0, yaw = 0)
+::Left4Bots.AIFuncs.BotSetAim <- function (type, target, duration, pitch = 0, yaw = 0, head = true)
 {
 	if (target) //lxc if no target, cancel aim (for "heal self","tempheal","deploy" order)
 	{
-		Aim_StartTime = Time();
 		AimType = type;
+		AimHead = head;
+		if (target != AimEnt) // keep Aim_StartTime if target not changed, so we can calculate the past time.
+			Aim_StartTime = CurTime;
 		Aim_Duration = duration;
-		Aim_TimeStamp = Aim_StartTime + Aim_Duration;
+		Aim_TimeStamp = CurTime + Aim_Duration;
 		AimPitch = pitch;
 		AimYaw = yaw;
+		if (LastAimTime != CurTime)
+			LastAimAngles = null;
 		
 		if (typeof(target) == "instance")
 		{
@@ -3652,6 +3856,7 @@ enum AI_AIM_TYPE {
 ::Left4Bots.AIFuncs.BotUnSetAim <- function ()
 {
 	AimType = AI_AIM_TYPE.None;
+	AimHead = true;
 	Aim_Duration = 0;
 	Aim_TimeStamp = 0;
 	AimEnt = null;
@@ -3659,8 +3864,14 @@ enum AI_AIM_TYPE {
 	AimPitch = 0;
 	AimYaw = 0;
 	
-	//lxc release attack button //TODO find a better way to release button
-	Left4Utils.PlayerUnForceButton(self, BUTTON_ATTACK);
+	//lxc release attack button and don't stop other order //TODO find a better way to do this
+	if (Left4Utils.IsButtonForced(self, BUTTON_ATTACK))
+	{
+		if (!AttackButtonForced)
+			Left4Utils.PlayerUnForceButton(self, BUTTON_ATTACK);
+		// not cause problem in testing, but who knows?
+		NetProps.SetPropInt(ActiveWeapon, "m_releasedFireButton", 1);
+	}
 }
 
 //lxc if only aim in "weapon_fire" event, bots will keep shaking their head, which will also cause them to slow down, so need to always set the eye angles.
@@ -3669,35 +3880,175 @@ enum AI_AIM_TYPE {
 	if (AimType != AI_AIM_TYPE.None)
 	{
 		// Aim at the last tick, then close
-		if (Time() >= Aim_TimeStamp && (Time() - Aim_TimeStamp > fixtime || !(close = true)))
+		if (CurTime >= Aim_TimeStamp && (CurTime - Aim_TimeStamp > fixtime || !(close = true)))
 		{
 			close = true;
 		}
 		else if (AimEnt)
 		{
 			// if target is invalid or dead, delete it
-			if (AimEnt.IsValid() && NetProps.GetPropInt(AimEnt, "m_lifeState") <= 0)
+			if (AimEnt.IsValid() && NetProps.GetPropInt(AimEnt, "m_lifeState") <= 1) // 1 - dying, 2 - dead
 			{
-				Left4Utils.BotLookAt(self, L4B.GetHitPos(AimEnt, (L4B.Settings.manual_attack_skill > 1 || AimType > AI_AIM_TYPE.Melee)), AimPitch, AimYaw);
+				BotLookAt(L4B.GetHitPos(AimEnt, AimHead), AimPitch, AimYaw);
+				// if target is about to die, hold fire and wait timeout
+				if (Left4Utils.IsButtonForced(self, BUTTON_ATTACK) && NetProps.GetPropInt(AimEnt, "m_lifeState") > 0)
+				{
+					Left4Utils.PlayerUnForceButton(self, BUTTON_ATTACK);
+					NetProps.SetPropInt(ActiveWeapon, "m_releasedFireButton", 1);
+				}
 			}
 			else
 				close = true;
 		}
 		else if (AimPos)
 		{
-			Left4Utils.BotLookAt(self, AimPos, AimPitch, AimYaw);
+			BotLookAt(AimPos, AimPitch, AimYaw);
 		}
 		else
 		{
 			close = true;
 		}
-		if (close)
-			BotUnSetAim();
 		
-		//lxc for "weapon_fire" event
-		//limit dual pistol dps
-		return !close && (L4B.Settings.manual_attack_skill > 2 || ActiveWeaponId != Left4Utils.WeaponId.weapon_pistol || (CurTime - LastFireTime >= 0.19 && NetProps.SetPropInt(ActiveWeapon, "m_isHoldingFireButton", 0)));
+		if (close)
+		{
+			BotUnSetAim();
+		}
+		else //lxc for "weapon_fire" event
+		{
+			//limit dual pistol dps
+			if (L4B.Settings.manual_attack_dual_pistol_nerf && ActiveWeaponId == Left4Utils.WeaponId.weapon_pistol && NetProps.GetPropInt(ActiveWeapon, "m_hasDualWeapons") > 0 && LastFireTime > 0)
+			{
+				local NextFireTime = NetProps.GetPropFloat(ActiveWeapon, "m_flNextPrimaryAttack");
+				if (NextFireTime > LastFireTime) // the bullet has been fired
+				{
+					LastFireTime = 0;
+					if (ActiveWeapon.Clip1() > 0)
+						NetProps.SetPropFloat(ActiveWeapon, "m_flNextPrimaryAttack", NextFireTime + 0.1);
+				}
+			}
+			
+			// Full Automatic Weapon, so we don't need release attack button
+			NetProps.SetPropInt(ActiveWeapon, "m_isHoldingFireButton", 0);
+		}
 	}
+}
+
+::Left4Bots.AIFuncs.BotLookAt <- function (target = null, deltaPitch = 0, deltaYaw = 0)
+{
+	local angles = self.EyeAngles();
+	local position = null;
+	if (target != null)
+	{
+		if ((typeof target) == "instance" && target.IsValid())
+			position = target.GetOrigin();
+		else if ((typeof target) == "Vector")
+			position = target;
+	}
+	
+	local dist = 0;
+	if (position != null)
+	{
+		local v = position - self.EyePosition();
+		dist = v.Norm();
+		angles = Left4Utils.VectorAngles(v);
+	}
+	
+	if (deltaPitch != 0 || deltaYaw != 0)
+		angles = RotateOrientation(angles, QAngle(deltaPitch, deltaYaw, 0));
+	
+	local OpenFire = Left4Utils.IsButtonForced(self, BUTTON_ATTACK);
+	if (OpenFire) // allow bots fire
+		NetProps.SetPropInt(ActiveWeapon, "m_releasedFireButton", 1);
+	
+	// don't smooth the camera if bot is not aiming at an entity
+	if ((AimType == AI_AIM_TYPE.Shoot || AimType == AI_AIM_TYPE.Rock) && AimEnt && L4B.Settings.manual_attack_saccade_speed > 0)
+	{
+		local function SmoothEyeAngle(Angle, v = Vector(), tick = 1.0 / 30.0, Deg2Rad = 3.14159265359 / 180)
+		{
+			v.x = Angle.x;
+			v.y = Angle.y;
+			v.z = 0;
+			
+			// Calculate the minimum diffs
+			while (v.x <= -180) v.x += 360;
+			while (v.x > 180) v.x -= 360;
+			while (v.y <= -180) v.y += 360;
+			while (v.y > 180) v.y -= 360;
+			
+			local Pitch = Vector(v.x, 0, 0);
+			local PitchDiff = Pitch.Norm();
+			local Yaw = Vector(0, v.y, 0);
+			local YawDiff = Yaw.Norm();
+			
+			local degrees = v.Norm();
+			//calculate arc length
+			local l = degrees * dist * Deg2Rad;
+			// not change the eye angles within this tolerance.
+			if (l <= 3)
+			{
+				return QAngle();
+			}
+			
+			// These code is deduced based on the test results, I don't know how the Valve's code is
+			
+			local function SmoothStep(start, end, x)
+			{
+				x = (x - start) / (end - start);
+				x = x < 0 ? 0 : (x > 1 ? 1 : x);
+				return x*x*(3 - 2*x);
+			}
+			
+			local deltaTime = LastAimAngles ? CurTime - LastAimTime : tick;
+			local pastTime = CurTime - Aim_StartTime;
+			
+			local max = L4B.Settings.manual_attack_saccade_speed * deltaTime;
+			local min = max * deltaTime;
+			
+			// gradually increase to the maximum value
+			local saccade_speed = max * (pastTime * 4.0);
+			if (saccade_speed > max)
+				saccade_speed = max;
+			
+			// Slow down the speed when approaching the target
+			local easeOut = 45;
+			local t = SmoothStep(0, easeOut, YawDiff);
+			local decayY = YawDiff > easeOut ? saccade_speed : saccade_speed * t + min * (1-t); // make sure the speed is not too low
+			if (decayY > saccade_speed)
+				decayY = saccade_speed;
+			
+			local decayP = PitchDiff > saccade_speed ? saccade_speed : PitchDiff;
+			
+			local decay = Vector(decayP, decayY, 0).Norm();
+			degrees -= decay;
+			// calculate arc length after rotated
+			l = degrees * dist * Deg2Rad;
+			// don't fire until the target is aimed
+			if (l > 16 && OpenFire)
+				NetProps.SetPropInt(ActiveWeapon, "m_releasedFireButton", 0);
+			
+			// Smoother when stop
+			if (degrees <= L4B.Settings.manual_attack_saccade_speed * 0.001)
+				return Angle;
+			
+			return QAngle(Pitch.x * decayP, Yaw.y * decayY, 0);
+		}
+		
+		// keep eye angles if already rotated
+		if (LastAimTime == CurTime)
+			angles = LastAimAngles;
+		else
+		{
+			// bot always look around and the eye angles always changed even we cover it
+			local eyeang = !LastAimAngles ? self.EyeAngles() : LastAimAngles;
+			local diff = angles - eyeang;
+			angles = eyeang + SmoothEyeAngle(diff);
+		}
+	}
+	
+	LastAimTime = CurTime;
+	LastAimAngles = angles;
+	
+	self.SnapEyeAngles(angles);
 }
 
 //...

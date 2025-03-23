@@ -39,7 +39,7 @@ Msg("Including left4bots_events...\n");
 
 	DirectorScript.GetDirectorOptions().cm_ShouldHurry <- Left4Bots.Settings.should_hurry;
 	
-	if (::Left4Bots.Settings.automation_autostart)
+	if (::Left4Bots.Settings.automation && ::Left4Bots.Settings.automation_autostart)
 		::Left4Bots.Automation.StartTasks(true);
 }
 
@@ -70,6 +70,10 @@ Msg("Including left4bots_events...\n");
 
 ::Left4Bots.Events.OnGameEvent_server_pre_shutdown <- function (params)
 {
+	Left4Bots.Logger.Debug("OnGameEvent_server_pre_shutdown");
+	
+	Convars.SetValue("sb_all_bot_game", 0);
+	
 	//local reason = params["reason"];
 
 	if (Left4Bots.Settings.anti_pipebomb_bug)
@@ -501,11 +505,8 @@ Msg("Including left4bots_events...\n");
 		//lxc if not gun or melee, skip
 		if (scope.ActiveWeaponSlot == 0 || scope.ActiveWeaponSlot == 1)
 		{
-			//lxc
 			scope.LastFireTime = Time();
-			if (scope.BotAim())
-				//lxc Full Automatic Weapon, so we don't need release attack button
-				NetProps.SetPropInt(player.GetActiveWeapon(), "m_isHoldingFireButton", 0);
+			scope.BotAim();
 		}
 	}
 }
@@ -662,58 +663,22 @@ Msg("Including left4bots_events...\n");
 	if ("userid" in params)
 		player = g_MapScript.GetPlayerFromUserID(params["userid"]);
 
-	if (!Left4Bots.IsHandledSurvivor(player))
-		return;
-
 	local door = null;
 	if ("door" in params)
 		door = EntIndexToHScript(params["door"]);
 
-	local allBots = RandomInt(1, 100) <= Left4Bots.Settings.close_saferoom_door_all_chance;
+	local area = null;
+	if ("area" in params)
+		area = NavMesh.GetNavAreaByID(params["area"]);
 
-	if (Left4Bots.Settings.close_saferoom_door && door && door.IsValid() && (allBots || Left4Bots.IsHandledBot(player)) && ::Left4Bots.ShouldCloseSaferoomDoor(player.GetPlayerUserId(), ::Left4Bots.Settings.close_saferoom_door_behind_range))
+	if (!::Left4Bots.AntiPipebombBugSetup && player && door && player.IsValid() && door.IsValid() && GetCurrentFlowPercentForPlayer(player) >= 85)
 	{
-		local state = NetProps.GetPropInt(door, "m_eDoorState"); // 0 = closed - 1 = opening - 2 = open - 3 = closing
-		if (state != 0 && state != 3)
-		{
-			local area = null;
-			if ("area" in params)
-				area = NavMesh.GetNavAreaByID(params["area"]);
-			else
-				area = NavMesh.GetNearestNavArea(door.GetOrigin(), 200, false, false);
-
-			local doorZ = player.GetOrigin().z;
-			if (area)
-			{
-				doorZ = area.GetCenter().z;
-
-				Left4Bots.Logger.Debug("OnGameEvent_player_entered_checkpoint - area: " + area.GetID() + " - DoorZ: " + doorZ);
-			}
-			else
-				Left4Bots.Logger.Debug("OnGameEvent_player_entered_checkpoint - area is null! - DoorZ: " + doorZ);
-
-			if (allBots)
-			{
-				foreach (bot in Left4Bots.Bots)
-				{
-					if (::Left4Bots.IsSurvivorInCheckpoint(bot))
-					{
-						local scope = bot.GetScriptScope();
-						scope.DoorAct = AI_DOOR_ACTION.Saferoom;
-						scope.DoorEnt = door; // This tells the bot to close the door. From now on, the bot will start looking for the best moment to close the door without locking himself out (will try at least)
-						scope.DoorZ = doorZ;
-					}
-				}
-			}
-			else
-			{
-				local scope = player.GetScriptScope();
-				scope.DoorAct = AI_DOOR_ACTION.Saferoom;
-				scope.DoorEnt = door; // This tells the bot to close the door. From now on, the bot will start looking for the best moment to close the door without locking himself out (will try at least)
-				scope.DoorZ = doorZ;
-			}
-		}
+		::Left4Bots.Logger.Debug("OnGameEvent_player_entered_checkpoint - Exit checkpoint door: " + door.GetName());
+		EntityOutputs.AddOutput(door, "OnClose", "worldspawn", "RunScriptCode", "::Left4Bots.HandleAntiPipebombBug()", 0, -1);
+		::Left4Bots.AntiPipebombBugSetup = true;
 	}
+
+	::Left4Bots.HandleCloseDoor(player, door, area);
 }
 
 ::Left4Bots.Events.OnGameEvent_revive_begin <- function (params)
@@ -753,24 +718,6 @@ Msg("Including left4bots_events...\n");
 	Left4Bots.Logger.Debug("OnGameEvent_finale_vehicle_ready");
 
 	Left4Bots.EscapeStarted = true;
-}
-
-::Left4Bots.Events.OnGameEvent_door_close <- function (params)
-{
-	local checkpoint = params["checkpoint"];
-	// TODO: is there any other way to know if we are in the exit checkpoint? Director.IsAnySurvivorInExitCheckpoint() doesn't even work. It returns true for the starting checkpoint too
-	if (checkpoint && Left4Bots.Settings.anti_pipebomb_bug /*&& Director.IsAnySurvivorInExitCheckpoint()*/ && Left4Bots.OtherSurvivorsInCheckpoint(-1)) // -1 is like: is everyone in checkpoint?
-	{
-		Left4Bots.ClearPipeBombs();
-
-		// If someone is holding a pipe bomb we'll also force them to switch to another weapon to make sure they don't throw the bomb while the door is closing
-		foreach (surv in ::Left4Bots.Survivors)
-		{
-			local activeWeapon = surv.GetActiveWeapon();
-			if (activeWeapon && activeWeapon.GetClassname() == "weapon_pipe_bomb")
-				Left4Bots.BotSwitchToAnotherWeapon(surv);
-		}
-	}
 }
 
 ::Left4Bots.FriendlyFireDebug <- function (attacker, victim, guilty)
@@ -866,37 +813,25 @@ Msg("Including left4bots_events...\n");
 ::Left4Bots.Events.OnGameEvent_player_hurt <- function (params)
 {
 	local player = g_MapScript.GetPlayerFromUserID(params["userid"]);
-
-	/*
-	local attacker = g_MapScript.GetPlayerFromUserID(params["attacker"]);
-	if (!attacker && ("attackerentid" in params))
-		attacker = EntIndexToHScript(params["attackerentid"]);
-
-	local weapon = "";
-	if ("weapon" in params)
-		weapon = params["weapon"];
-	local type = -1;
-	if ("type" in params)
-		type = params["type"]; // commons do DMG_CLUB
-
-	if (attacker)
-		Left4Bots.Logger.Debug("OnGameEvent_player_hurt - player: " + player.GetPlayerName() + " - attacker: " + attacker + " - weapon: " + weapon + " - type: " + type);
-	else
-		Left4Bots.Logger.Debug("OnGameEvent_player_hurt - player: " + player.GetPlayerName() + " - weapon: " + weapon + " - type: " + type);
-	*/
-
+	
 	if (Left4Bots.IsHandledBot(player))
 	{
 		local weapon = "";
 		if ("weapon" in params)
 			weapon = params["weapon"];
-
+		
 		if (weapon == "insect_swarm" || weapon == "inferno")
 		{
 			// Pause the 'wait' order if the bot is being damaged by the spitter's spit or the fire
 			local scope = player.GetScriptScope();
 			if (scope.Waiting && !scope.Paused)
 				scope.BotPause();
+		}
+		else if ((weapon == "tank_rock" || weapon == "tank_claw") && !player.IsIncapacitated())
+		{
+			local scope = player.GetScriptScope();
+			scope.BotPause();
+			scope.Airborne = true;
 		}
 	}
 }
@@ -1137,7 +1072,40 @@ Msg("Including left4bots_events...\n");
 	Left4Bots.SpecialGotSurvivor(player, victim, "lunge_pounce");
 }
 
-// -----
+// fix bots hit by tank, rock or charger, sometimes not fire after getting up.
+::Left4Bots.Events.OnGameEvent_charger_impact <- function (params)
+{
+	local player = g_MapScript.GetPlayerFromUserID(params["victim"]);
+	
+	if (Left4Bots.IsHandledBot(player))
+	{
+		local scope = player.GetScriptScope();
+		scope.BotPause();
+		scope.Airborne = true;
+	}
+}
+
+// fix bot dont shoot when executing move command
+::Left4Bots.Events.OnGameEvent_player_incapacitated <- function (params)
+{
+	local player = g_MapScript.GetPlayerFromUserID(params["userid"]);
+	
+	if (Left4Bots.IsHandledBot(player))
+	{
+		local scope = player.GetScriptScope();
+		scope.BotPause();
+	}
+}
+::Left4Bots.Events.OnGameEvent_player_ledge_grab <- function (params)
+{
+	local player = g_MapScript.GetPlayerFromUserID(params["userid"]);
+	
+	if (Left4Bots.IsHandledBot(player))
+	{
+		local scope = player.GetScriptScope();
+		scope.BotPause();
+	}
+}
 
 ::Left4Bots.OnPostPlayerSpawn <- function (player, userid)
 {
@@ -1571,6 +1539,7 @@ Msg("Including left4bots_events...\n");
 	TeamSnipers = 0;
 	TeamPills = 0;
 	TeamAdren = 0;
+	TeamMagnums = 0;
 
 	foreach (surv in Survivors)
 	{
@@ -1599,6 +1568,7 @@ Msg("Including left4bots_events...\n");
 
 				TeamMelee += (cls == "weapon_chainsaw").tointeger();
 				TeamMelee += (cls == "weapon_melee").tointeger();
+				TeamMagnums += (cls == "weapon_pistol_magnum").tointeger();
 			}
 
 			if (INV_SLOT_THROW in inv)
@@ -1649,11 +1619,44 @@ Msg("Including left4bots_events...\n");
 // Does various stuff
 ::Left4Bots.OnThinker <- function (params)
 {
+	// Handle the spawned block navs for the incapped survivors
+	if (Settings.incap_block_nav_radius > 0)
+	{
+		// Enabled. Remove the nav blockers that are no longer needed
+		foreach (surv, blocker in IncapBlockNavs)
+		{
+			if (!surv || !surv.IsValid() || surv.IsDead() || surv.IsDying() || !surv.IsIncapacitated() || !HasAggroedTankWithin(surv.GetOrigin(), 0, Settings.incap_block_nav_tank_range))
+			{
+				Logger.Debug("Removing incap nav blocker (" + blocker + ") for survivor: " + surv);
+				
+				IncappedUnblockNav(blocker);
+				delete IncapBlockNavs[surv];
+			}
+		}
+	}
+	else
+	{
+		// Disabled. Clear any previously spawned blocker
+		foreach (surv, blocker in IncapBlockNavs)
+		{
+			Logger.Debug("Removing incap nav blocker (" + blocker + ") for survivor: " + surv);
+			IncappedUnblockNav(blocker);
+		}
+		IncapBlockNavs.clear();
+	}
+	
 	// Listen for human survivors BUTTON_SHOVE press
 	foreach (surv in Survivors)
 	{
 		if (surv.IsValid())
 		{
+			// Spawn a new nav blocker for the incapped survivor (if needed)
+			if (Settings.incap_block_nav_radius > 0 && surv.IsIncapacitated() && !(surv in IncapBlockNavs) && !surv.IsDead() && !surv.IsDying() && HasAggroedTankWithin(surv.GetOrigin(), 0, Settings.incap_block_nav_tank_range))
+			{
+				IncapBlockNavs[surv] <- IncappedBlockNav(surv);
+				Logger.Debug("Added incap nav blocker (" + IncapBlockNavs[surv] + ") for survivor: " + surv);
+			}
+			
 			local userid = surv.GetPlayerUserId();
 			
 			SurvivorFlow[userid].inCheckpoint = IsSurvivorInCheckpoint(surv);
@@ -1700,7 +1703,7 @@ Msg("Including left4bots_events...\n");
 			}
 		}
 	}
-	
+
 	if (Settings.automation_debug)
 		RefreshAutomationDebugHudText();
 	
@@ -2350,6 +2353,11 @@ settings
 				
 				Logger.Debug("FinalVehicleArrived");
 			}
+			
+			break;
+		
+		case "PlayerLockTheDoorCheckPoint":
+			::Left4Bots.HandleCloseDoor(who);
 			
 			break;
 		

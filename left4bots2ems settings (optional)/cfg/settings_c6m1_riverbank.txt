@@ -1,0 +1,1 @@
+manual_attack_skill = 3

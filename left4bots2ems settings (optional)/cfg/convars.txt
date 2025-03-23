@@ -2,7 +2,7 @@
 allow_all_bot_survivor_team 1
 sb_all_bot_game 1
 sb_battlestation_give_up_range_from_human 2000
-sb_battlestation_human_hold_time 4
+sb_battlestation_human_hold_time 0
 //sb_close_checkpoint_door_interval 0.18
 sb_close_threat_range 75
 sb_combat_saccade_speed 7875
@@ -42,7 +42,7 @@ sb_threat_medium_range 3000
 sb_threat_very_close_range 50
 sb_threat_very_far_range 16777215
 sb_use_button_range 1000
-//sb_vomit_blind_time 0.0
+sb_vomit_blind_time 0.0
 sb_allow_leading 0
 sb_toughness_buffer 0
 sv_consistency 0
@@ -65,8 +65,8 @@ survivor_damage_speed_factor 1
 z_attack_movement_penalty 0
 fall_speed_fatal 840
 fall_speed_safe 640
-mounted_gun_cooldown_time 8
-mounted_gun_overheat_penalty_time 8
+mounted_gun_cooldown_time 12
+mounted_gun_overheat_penalty_time 12
 mounted_gun_overheat_time 20
 mounted_gun_rate_of_fire 12
 z_minigun_cooldown_time 8
@@ -82,7 +82,7 @@ z_claw_hit_pitch_max 0
 z_claw_hit_pitch_min 0
 z_claw_hit_yaw_max 0
 z_claw_hit_yaw_min 0
-z_debug_tank_spawn 0
+//z_debug_tank_spawn 0
 r_flashlightmuzzleflash 0
 sb_friendlyfire 0
 sb_allow_shoot_through_survivors 1
@@ -91,11 +91,16 @@ director_no_survivor_bots 0
 director_ai_tanks 1
 director_spectate_specials 1
 // COMMENT THREE COMANNDS BELOW CHECK WORKSHOP ITEM FOR NUMBERS 0.06, 30
-nb_update_frequency 0.01
+nb_update_frequency 0.0
 nb_update_maxslide 0
 nb_update_framelimit 60
-sv_pausable 0
-sv_lan 0
+nb_friction_forward 0
+nb_friction_sideways 10
+z_max_neighbor_range 16
+sv_client_min_interp_ratio -1
+sv_client_max_interp_ratio 0
+sv_pausable 1
+sv_lan 1
 gameinstructor_enable 1
 director_show_intensity 1
 //sv_allow_votes 0
@@ -108,7 +113,7 @@ cl_autoaim2 1
 cl_autohelp 1
 //cl_max_shadow_renderable_dist 0
 //r_flashlightfov 120
-director_cs_weapon_spawn_chance 0.50
+director_cs_weapon_spawn_chance 1
 sv_vote_issue_change_map_later_allowed 0
 sv_vote_issue_change_map_now_allowed 0
 sv_vote_issue_change_mission_allowed 0
@@ -116,3 +121,12 @@ sv_vote_issue_kick_allowed 0
 sv_vote_issue_restart_game_allowed 0
 //sv_vote_issue_change_difficulty_allowed 0
 //sv_allow_votes 0
+hud_targetid_health 1
+//stuff from rebalance
+survivor_incapacitated_accuracy_penalty 0
+adrenaline_health_buffer 30
+pipe_bomb_timer_duration 8
+pipe_bomb_beep_interval_delta 0.017
+ammo_assaultrifle_max 400
+melee_range 95
+phys_ragdoll_force_magnitude 75000

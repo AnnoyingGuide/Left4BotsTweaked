@@ -19,6 +19,8 @@ if (!IncludeScript("left4lib_users"))
 	error("[L4B][ERROR] Failed to include 'left4lib_users', please make sure the 'Left 4 Lib' addon is installed and enabled!\n");
 if (!IncludeScript("left4lib_timers"))
 	error("[L4B][ERROR] Failed to include 'left4lib_timers', please make sure the 'Left 4 Lib' addon is installed and enabled!\n");
+if (!IncludeScript("left4lib_timers2"))
+	error("[L4B][ERROR] Failed to include 'left4lib_timers2', please make sure the 'Left 4 Lib' addon is installed and enabled!\n");
 if (!IncludeScript("left4lib_concepts"))
 	error("[L4B][ERROR] Failed to include 'left4lib_concepts', please make sure the 'Left 4 Lib' addon is installed and enabled!\n");
 if (!IncludeScript("left4lib_simplehud"))
@@ -84,7 +86,7 @@ IncludeScript("left4bots_requirements");
 	LastLeadStartVocalize = 0
 	NiceShootSurv = null
 	NiceShootTime = 0
-	IncapBlockNavs = {}
+	//IncapBlockNavs = {}
 	ItemsToAvoid = []
 	TeamShotguns = 0
 	TeamMolotovs = 0
@@ -102,6 +104,7 @@ IncludeScript("left4bots_requirements");
 	ScavengeUseTargetPos = null
 	ScavengeUseType = 0
 	ScavengeBots = {}
+	IncapNavBlockerAreas = {}
 	L4F = false
 	LastSignalType = ""
 	LastSignalTime = 0
@@ -3704,25 +3707,57 @@ Support vanilla weapon preference.
 	return false;
 }
 
-::Left4Bots.IncappedBlockNav <- function (survivor)
+// Enables/Disables bots switching to secondary weapon by setting/unsetting its m_hOwner property
+::Left4Bots.AllowSecondaryWeaponSwitch <- function(bot, allow)
 {
-	local kvs = { classname = "script_nav_blocker", origin = survivor.GetOrigin(), extent = Vector(Settings.incap_block_nav_radius, Settings.incap_block_nav_radius, Settings.incap_block_nav_radius), teamToBlock = "2", affectsFlow = "0" };
-	local ent = g_ModeScript.CreateSingleSimpleEntityFromTable(kvs);
-	ent.ValidateScriptScope();
-	Logger.Debug("Created script_nav_blocker (incapped): " + ent.GetName());
-
-	DoEntFire("!self", "SetParent", "!activator", 0, survivor, ent); // I parent the nav blocker to the survivor entity so it follows him if incap crawling is enabled (not sure the nav areas are updated, though)
-	DoEntFire("!self", "BlockNav", "", 0, null, ent);
-	return ent;
+	local w = Left4Utils.GetInventoryItemInSlot(bot, INV_SLOT_SECONDARY);
+	if (w)
+		NetProps.SetPropEntity(w, "m_hOwner", (allow ? bot : null));
 }
 
-::Left4Bots.IncappedUnblockNav <- function (blocker)
+// Handles the logics for allowing/not allowing to switch to secondary
+::Left4Bots.EnforcePrimaryWeapon <- function(bot, ActiveWeapon)
 {
-	if (!blocker || !blocker.IsValid())
-		return;
-
-	DoEntFire("!self", "UnblockNav", "", 0, null, blocker);
-	DoEntFire("!self", "Kill", "", 0.1, null, blocker);
+	local canSwitch = true;
+	if (ActiveWeapon && !bot.IsIncapacitated())
+	{
+		local wp = Left4Utils.GetInventoryItemInSlot(bot, INV_SLOT_PRIMARY);
+		local wp2nd = Left4Utils.GetInventoryItemInSlot(bot, INV_SLOT_SECONDARY);
+		if (wp && wp2nd && Left4Utils.GetAmmoPercent(wp) > 0)
+		{
+			local id2nd = Left4Utils.GetWeaponId(wp2nd);
+			local flag = id2nd == Left4Utils.WeaponId.weapon_pistol || id2nd == Left4Utils.WeaponId.weapon_pistol_magnum ? 1 : (id2nd > Left4Utils.MeleeWeaponId.none ? 2 : (id2nd == Left4Utils.WeaponId.weapon_chainsaw ? 4 : 0));
+			if (flag)
+			{
+				switch (Left4Utils.GetWeaponId(wp))
+				{
+					case Left4Utils.WeaponId.weapon_pumpshotgun:
+					case Left4Utils.WeaponId.weapon_autoshotgun:
+					case Left4Utils.WeaponId.weapon_shotgun_chrome:
+					case Left4Utils.WeaponId.weapon_shotgun_spas:
+						if ((Settings.enforce_shotgun & flag) == flag)
+							canSwitch = false;
+						break;
+					
+					case Left4Utils.WeaponId.weapon_hunting_rifle:
+					case Left4Utils.WeaponId.weapon_sniper_military:
+					case Left4Utils.WeaponId.weapon_sniper_awp:
+					case Left4Utils.WeaponId.weapon_sniper_scout:
+						if ((Settings.enforce_sniper & flag) == flag)
+							canSwitch = false;
+						break;
+				}
+				
+				if (!canSwitch && ActiveWeapon == wp2nd)
+				{
+					NetProps.SetPropEntity(wp2nd, "m_hOwner", bot);
+					bot.SwitchToItem(wp.GetClassname());
+				}
+			}
+		}
+	}
+	
+	AllowSecondaryWeaponSwitch(bot, canSwitch);
 }
 
 // Helps update the COMMANDS.md file on the github repo

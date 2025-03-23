@@ -908,6 +908,10 @@ enum AI_AIM_TYPE {
 		ActiveWeaponSlot = Left4Utils.GetWeaponSlotById(ActiveWeaponId);
 	}
 
+	// handle switch logic
+	if (L4B.Settings.enforce_sniper || L4B.Settings.enforce_shotgun)
+		L4B.EnforcePrimaryWeapon(self, ActiveWeapon);
+
 	// Basically, all this CarryItem stuff is because some carriable items despawn as prop_physics and respawn as weapon_* and viceversa when picking/dropping them
 	// and also because the game's "dropped" event does not trigger every time
 	if (CarryItem)
@@ -2184,8 +2188,7 @@ enum AI_AIM_TYPE {
 	local wantsDefib = false;
 	local wantsUpgdInc = false;
 	local wantsUpgdExp = false;
-	local hasT1Sniper = false;
-	local hasT2Sniper = false;
+	local hasSniper = false;
 	local hasMagnum = false;
 	local hasPills = false;
 	local wantsPills = false;
@@ -2209,8 +2212,7 @@ enum AI_AIM_TYPE {
 				case 0:
 					hasT1Shotgun = (currWeps[i] == Left4Utils.WeaponId.weapon_shotgun_chrome) || (currWeps[i] == Left4Utils.WeaponId.weapon_pumpshotgun);
 					hasT2Shotgun = (currWeps[i] == Left4Utils.WeaponId.weapon_autoshotgun) || (currWeps[i] == Left4Utils.WeaponId.weapon_shotgun_spas);
-					hasT1Sniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_scout);
-					hasT2Sniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_military) || (currWeps[i] == Left4Utils.WeaponId.weapon_hunting_rifle) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_awp);
+					hasSniper = (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_scout) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_military) || (currWeps[i] == Left4Utils.WeaponId.weapon_hunting_rifle) || (currWeps[i] == Left4Utils.WeaponId.weapon_sniper_awp);
 					priAmmoPercent = Left4Utils.GetAmmoPercent(inv[slot]);
 					hasAmmoUpgrade = NetProps.GetPropInt(inv[slot], "m_nUpgradedPrimaryAmmoLoaded") >= L4B.Settings.pickups_wep_upgraded_ammo;
 					hasLaserSight = (NetProps.GetPropInt(inv[slot], "m_upgradeBitVec") & 4) != 0;
@@ -2276,16 +2278,9 @@ enum AI_AIM_TYPE {
 					WeaponsToSearch[Left4Utils.WeaponId.weapon_shotgun_spas] <- 0;
 				}
 			}
-			else if (L4B.TeamSnipers <= L4B.Settings.team_min_snipers && (hasT1Sniper || hasT2Sniper) && priAmmoPercent > L4B.Settings.pickups_wep_replace_ammo)
+			else if (L4B.TeamSnipers <= L4B.Settings.team_min_snipers && hasSniper && priAmmoPercent > L4B.Settings.pickups_wep_replace_ammo)
 			{
 				//keep it
-				
-				if (!hasT2Sniper)
-				{
-					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_military] <- 0;
-					WeaponsToSearch[Left4Utils.WeaponId.weapon_hunting_rifle] <- 0;
-					WeaponsToSearch[Left4Utils.WeaponId.weapon_sniper_awp] <- 0;
-				}
 			}
 			else
 			{

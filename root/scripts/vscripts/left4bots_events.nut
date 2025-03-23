@@ -1096,16 +1096,29 @@ Msg("Including left4bots_events...\n");
 		scope.BotPause();
 	}
 }
+
 ::Left4Bots.Events.OnGameEvent_player_ledge_grab <- function (params)
 {
 	local player = g_MapScript.GetPlayerFromUserID(params["userid"]);
 	
 	if (Left4Bots.IsHandledBot(player))
 	{
+		Left4Bots.AllowSecondaryWeaponSwitch(player, true);
+		
 		local scope = player.GetScriptScope();
 		scope.BotPause();
 	}
 }
+
+::Left4Bots.Events.OnGameEvent_player_incapacitated_start <- function (params)
+{
+	local player = g_MapScript.GetPlayerFromUserID(params["userid"]);
+	
+	if (Left4Bots.IsHandledBot(player))
+		Left4Bots.AllowSecondaryWeaponSwitch(player, true);
+}
+
+// -----
 
 ::Left4Bots.OnPostPlayerSpawn <- function (player, userid)
 {
@@ -1401,6 +1414,14 @@ Msg("Including left4bots_events...\n");
 
 		Logger.Debug("Changing convar " + key + " to " + val);
 	}
+	
+	if (Settings.incap_block_nav_interval > 0)
+	{
+		local tmr = ::Left4Timers2.GetTimer("L4B_IncapNavBlocker");
+		if (!tmr)
+			tmr = ::Left4Timers2.AddTimer("L4B_IncapNavBlocker", ::Left4Bots.OnIncapNavBlockerTimer.bindenv(::Left4Bots), Settings.incap_block_nav_interval, Settings.incap_block_nav_interval);
+		tmr.Start();
+	}
 }
 
 // Last tank alive is dead
@@ -1425,6 +1446,97 @@ Msg("Including left4bots_events...\n");
 		Logger.Debug("Changing convar " + key + " back to " + val);
 	}
 	OnTankCvarsBak.clear();
+	
+	local tmr = ::Left4Timers2.GetTimer("L4B_IncapNavBlocker");
+	if (tmr)
+		tmr.Stop();
+	OnIncapNavBlockerTimer();
+}
+
+// Handles the incap_block_nav feature directly blocking/unblocking the nav areas via vscript
+::Left4Bots.OnIncapNavBlockerTimer <- function ()
+{
+	Logger.Debug("OnIncapNavBlockerTimer");
+	
+	// Reset the flags of all the previously blocked nav areas
+	foreach (id, c in IncapNavBlockerAreas)
+		IncapNavBlockerAreas[id] = false;
+	
+	// Check the tank's proximity for each incapped survivor and add/set the flag of the nav areas in range
+	if (Settings.incap_block_nav_interval > 0)
+	{
+		foreach (surv in Survivors)
+		{
+			if (surv.IsValid() && surv.IsIncapacitated() && !surv.IsDead() && !surv.IsDying() && HasAggroedTankWithin(surv.GetOrigin(), 0, Settings.incap_block_nav_tank_range))
+			{
+				Logger.Debug("Survivor " + surv.GetPlayerName() + " is incapped and has tank in range");
+				
+				// Survivor is incapped and has a tank in range, search the nav areas in radius
+				local areas = {};
+				NavMesh.GetNavAreasInRadius(surv.GetOrigin(), Settings.incap_block_nav_radius, areas);
+				foreach (area in areas)
+				{
+					local id = area.GetID();
+					local alreadyblocked = area.IsBlocked(TEAM_SURVIVORS, false);
+					
+					if (alreadyblocked && !(id in IncapNavBlockerAreas))
+					{
+						// This area was already blocked by something else; skip it
+						
+						if (Settings.incap_block_nav_debug)
+							area.DebugDrawFilled(10, 100, 200, 255, Settings.incap_block_nav_interval, true);
+						
+						Logger.Debug("Skipping area " + id + " because it was already blocked by something else");
+						continue;
+					}
+						
+					IncapNavBlockerAreas[id] <- true;
+					
+					if (!alreadyblocked)
+					{
+						// Not blocked yet; block it
+						Logger.Debug("Blocking area " + id);
+						area.MarkAsBlocked(TEAM_SURVIVORS);
+						
+						if (Settings.incap_block_nav_debug)
+							area.DebugDrawFilled(150, 0, 0, 255, Settings.incap_block_nav_interval, true);
+					}
+					else if (Settings.incap_block_nav_debug)
+						area.DebugDrawFilled(255, 10, 10, 255, Settings.incap_block_nav_interval, true);
+				}
+			}
+		}
+	}
+	
+	Logger.Debug("IncapNavBlockerAreas.len before clean = " + IncapNavBlockerAreas.len());
+	
+	// Unblock the nav areas that remained with the flag unset
+	local idstoremove = [];
+	foreach (id, flag in IncapNavBlockerAreas)
+	{
+		if (!flag)
+		{
+			local area = NavMesh.GetNavAreaByID(id);
+			if (area && area.IsBlocked(TEAM_SURVIVORS, false))
+			{
+				Logger.Debug("Unblocking area " + id);
+				area.UnblockArea();
+				
+				if (Settings.incap_block_nav_debug)
+					area.DebugDrawFilled(0, 255, 0, 255, Settings.incap_block_nav_interval, true);
+			}
+			
+			idstoremove.append(id);
+		}
+	}
+	
+	Logger.Debug("Areas to remove = " + idstoremove.len());
+	
+	// And finally remove them from the list
+	foreach (id in idstoremove)
+		delete IncapNavBlockerAreas[id];
+	
+	Logger.Debug("IncapNavBlockerAreas.len after clean = " + IncapNavBlockerAreas.len());
 }
 
 // Removes invalid entities from the Survivors, Bots, Tanks and Deads lists
@@ -1619,44 +1731,11 @@ Msg("Including left4bots_events...\n");
 // Does various stuff
 ::Left4Bots.OnThinker <- function (params)
 {
-	// Handle the spawned block navs for the incapped survivors
-	if (Settings.incap_block_nav_radius > 0)
-	{
-		// Enabled. Remove the nav blockers that are no longer needed
-		foreach (surv, blocker in IncapBlockNavs)
-		{
-			if (!surv || !surv.IsValid() || surv.IsDead() || surv.IsDying() || !surv.IsIncapacitated() || !HasAggroedTankWithin(surv.GetOrigin(), 0, Settings.incap_block_nav_tank_range))
-			{
-				Logger.Debug("Removing incap nav blocker (" + blocker + ") for survivor: " + surv);
-				
-				IncappedUnblockNav(blocker);
-				delete IncapBlockNavs[surv];
-			}
-		}
-	}
-	else
-	{
-		// Disabled. Clear any previously spawned blocker
-		foreach (surv, blocker in IncapBlockNavs)
-		{
-			Logger.Debug("Removing incap nav blocker (" + blocker + ") for survivor: " + surv);
-			IncappedUnblockNav(blocker);
-		}
-		IncapBlockNavs.clear();
-	}
-	
 	// Listen for human survivors BUTTON_SHOVE press
 	foreach (surv in Survivors)
 	{
 		if (surv.IsValid())
 		{
-			// Spawn a new nav blocker for the incapped survivor (if needed)
-			if (Settings.incap_block_nav_radius > 0 && surv.IsIncapacitated() && !(surv in IncapBlockNavs) && !surv.IsDead() && !surv.IsDying() && HasAggroedTankWithin(surv.GetOrigin(), 0, Settings.incap_block_nav_tank_range))
-			{
-				IncapBlockNavs[surv] <- IncappedBlockNav(surv);
-				Logger.Debug("Added incap nav blocker (" + IncapBlockNavs[surv] + ") for survivor: " + surv);
-			}
-			
 			local userid = surv.GetPlayerUserId();
 			
 			SurvivorFlow[userid].inCheckpoint = IsSurvivorInCheckpoint(surv);

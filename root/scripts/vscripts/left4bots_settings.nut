@@ -121,6 +121,18 @@
 	// But if, for some reason, the open/close door fails (too far or something) the door will be forced to open/close by the addon after this delay
 	door_failsafe_delay = 0.15
 
+	// Don't switch to the secondary weapon if the primary is a shotgun and the secondary is
+	// 1 = pistol, 2 = melee, 4 = chainsaw
+	// 6 = pistol + melee + chainsaw
+	// 0 = OFF (Vanilla AI logic)
+	enforce_shotgun = 6
+	
+	// Don't switch to the secondary weapon if the primary is a sniper rifle and the secondary is
+	// 1 = pistol, 2 = melee, 4 = chainsaw
+	// 3 = pistol + melee
+	// 0 = OFF (Vanilla AI logic)
+	enforce_sniper = 1
+
 	// If the bot's falling (vertical) velocity is > than this, he will be safely teleported to a random teammate. 0 = disabled
 	// Can be set to the value of one of the game's cvars "fall_speed_fatal" (default val. 720), "fall_speed_safe" (560) to avoid insta-death or any damage at all respectively
 	fall_velocity_warp = 0
@@ -196,14 +208,19 @@
 
 	// When you use the "hurry" command, the bot(s) improved AI will be disabled (they will not pick-up items/execute orders/defib teammates/throw items/scavenge) for this amount of seconds
 	hurry_time = 15
-	
-	// When a survivor is incapped a nav_blocker is spawned on his position to block the nav areas in this radius if a tank is whithin incap_block_nav_tank_range from him.
-	// This is used to prevent the survivor bots to go help the downed survivor while the tank is there.
-	// 0 = Disabled
+
+	// [1/0] Enable/Disable a debug visualization of the blocked/unblocked nav areas when incap_block_nav_interval is > 0
+	incap_block_nav_debug = 0
+
+	// When a survivor is incapacitated and a tank is incap_block_nav_tank_range units from him, the nav areas whithin incap_block_nav_radius from the incapped survivor are blocked in order to
+	// make the survivor bots not rush to revive him while the tank is there. The areas are automatically unblocked if the tank is out of the range, dies or the survivor is no longer incapacitated.
+	// Setting this to 0 will disable the feature
+	incap_block_nav_interval = 0.5
+
+	// The nav areas whithin this radius from the incapped survivor and a tank nearby will be blocked if incap_block_nav_interval > 0
 	incap_block_nav_radius = 100
 	
-	// When a survivor is incapped (and incap_block_nav_radius > 0) a nav_blocker is spawned on his position to block the nav areas around him if a tank is whithin this range from him.
-	// This is used to prevent the survivor bots to go help the downed survivor while the tank is there.
+	// An aggroed tank must be within this radius from the incapped survivor in order to block the nav areas around the survivor
 	incap_block_nav_tank_range = 700
 
 	// [1/0] 1 = Reverse itemstoavoid logics (tells the vanilla AI to avoid all the items except the ones in the itemstoavoid.txt file). 0 = Normal logics (vanilla AI should avoid only the items in the file)
@@ -269,7 +286,7 @@
 	// 0.6 Kill everything in sight
 	// 0.99 Almost never actively looking for new targets
 	// 1.0 = The bot will probably never shoot
-	manual_attack_mindot = 0.94
+	manual_attack_mindot = 0.7
 
 	// While executing MOVE commands (or always if manual_attack_always = 1), this is the max distance of the enemies that the bot will shoot
 	manual_attack_radius = 950
@@ -277,8 +294,9 @@
 	// Smooth camera rotation, turn a part of angles at a time instead of looking at the target immediately, only apply to shoot command.
 	// Depending on the set value, can easily adjust the bot's aiming speed, observer the bots at first person to check the difference.
 	// Valve use these Cvars 'sb_normal_saccade_speed = 350', 'sb_combat_saccade_speed = 1000' to contronl the default AI.
-	// 500 means bots need 0.36(180/500) seconds to turn 180 degrees.
-	// Advanced 1000, Expert 1000
+	// 500 means bots needs at least 0.36(180/500) seconds to turn 180 degrees.
+	// Advanced 1000, Expert 2000.
+	// set 0 to disable.
 	manual_attack_saccade_speed = 500
 
 	// max distance of the bot will shoot enemies head, recommended short than "manual_attack_radius", so bots won't waste much ammo when shooting at far target.
